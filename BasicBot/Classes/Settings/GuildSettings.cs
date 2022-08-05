@@ -1,14 +1,5 @@
-﻿using Discord;
-using Discord.Rest;
-using Discord.WebSocket;
+﻿using System.Collections.Generic;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace BasicBot.Settings
 {
@@ -24,17 +15,21 @@ namespace BasicBot.Settings
         public int? ModerationCount = null;
 
         [JsonProperty]
-        public Dictionary<string, List<string>> Maps = new Dictionary<string, List<string>>();
+        public Dictionary<string, List<string>> Maps = new();
+
+        [JsonProperty]
+        public ulong TournamentCategory;
 
         public class StaffRoles
         {
             [JsonProperty]
-            public List<ulong> Admin = new List<ulong>();
+            public List<ulong> Admin = new();
+
             [JsonProperty]
-            public List<ulong> Management = new List<ulong>();
+            public List<ulong> Management = new();
+
             [JsonProperty]
-            public List<ulong> Support = new List<ulong>();
+            public List<ulong> Support = new();
         }
     }
-
 }
