@@ -39,13 +39,15 @@ namespace BasicBot.GraphQL.SetsAndLinkedAccounts
     public partial class CurrentUser
     {
         [JsonProperty("id")]
-        public long Id { get; set; }
+        [JsonConverter(typeof(ParseStringConverter))]
+        public string Id { get; set; }
     }
 
     public partial class Event
     {
         [JsonProperty("id")]
-        public long Id { get; set; }
+        [JsonConverter(typeof(ParseStringConverter))]
+        public string Id { get; set; }
 
         [JsonProperty("tournament")]
         public Tournament Tournament { get; set; }
@@ -63,7 +65,8 @@ namespace BasicBot.GraphQL.SetsAndLinkedAccounts
     public partial class Node
     {
         [JsonProperty("id")]
-        public long Id { get; set; }
+        [JsonConverter(typeof(ParseStringConverter))]
+        public string Id { get; set; }
 
         [JsonProperty("totalGames")]
         public long TotalGames { get; set; }
@@ -76,18 +79,23 @@ namespace BasicBot.GraphQL.SetsAndLinkedAccounts
 
         [JsonProperty("slots")]
         public List<Slot> Slots { get; set; }
+        
+        [JsonProperty("winnerId")]
+        [JsonConverter(typeof(ParseStringConverter))]
+        public string WinnerId { get; set; }
     }
 
     public partial class Game
     {
         [JsonProperty("winnerId")]
-        public long WinnerId { get; set; }
+        [JsonConverter(typeof(ParseStringConverter))]
+        public string WinnerId { get; set; }
 
         [JsonProperty("orderNum")]
         public long OrderNum { get; set; }
 
         [JsonProperty("stage")]
-        public object Stage { get; set; }
+        public string Stage { get; set; }
     }
 
     public partial class Slot
@@ -98,6 +106,10 @@ namespace BasicBot.GraphQL.SetsAndLinkedAccounts
 
     public partial class Entrant
     {
+        [JsonProperty("id")]
+        [JsonConverter(typeof(ParseStringConverter))]
+        public string Id { get; set; }
+        
         [JsonProperty("name")]
         public string Name { get; set; }
 
@@ -117,7 +129,7 @@ namespace BasicBot.GraphQL.SetsAndLinkedAccounts
     public partial class RequiredConnection
     {
         [JsonProperty("id")]
-        public object Id { get; set; }
+        public string Id { get; set; }
 
         [JsonProperty("externalId")]
         public string ExternalId { get; set; }
@@ -129,13 +141,20 @@ namespace BasicBot.GraphQL.SetsAndLinkedAccounts
         public TypeEnum Type { get; set; }
 
         [JsonProperty("url")]
-        public object Url { get; set; }
+        public string Url { get; set; }
     }
 
     public partial class Tournament
     {
         [JsonProperty("admins")]
-        public List<CurrentUser> Admins { get; set; }
+        public List<Admin> Admins { get; set; }
+    }
+
+    public partial class Admin
+    {
+        [JsonProperty("id")]
+        [JsonConverter(typeof(ParseStringConverter))]
+        public string Id { get; set; }
     }
 
     public partial class Extensions
@@ -168,14 +187,7 @@ namespace BasicBot.GraphQL.SetsAndLinkedAccounts
         public string Scope { get; set; }
     }
 
-    public enum TypeEnum { 
-        Twitter,
-        Twitch,
-        Steam,
-        Discord,
-        Xbox,
-        Mixer 
-    };
+    public enum TypeEnum { Discord, Mixer, Steam, Twitch, Twitter, Xbox };
 
     public partial class SetsAndLinkedAccounts
     {
@@ -201,6 +213,26 @@ namespace BasicBot.GraphQL.SetsAndLinkedAccounts
         };
     }
 
+    internal class ParseStringConverter : JsonConverter
+    {
+        public override bool CanConvert(Type t) => t == typeof(string) || t == typeof(string);
+
+        public override object ReadJson(JsonReader reader, Type t, object existingValue, JsonSerializer serializer)
+        {
+            if (reader.TokenType == JsonToken.Null) return null;
+            var value = serializer.Deserialize<string>(reader);
+            return value;
+        }
+
+        public override void WriteJson(JsonWriter writer, object untypedValue, JsonSerializer serializer)
+        {
+            serializer.Serialize(writer, untypedValue.ToString());
+            return;
+        }
+
+        public static readonly ParseStringConverter Singleton = new ParseStringConverter();
+    }
+
     internal class TypeEnumConverter : JsonConverter
     {
         public override bool CanConvert(Type t) => t == typeof(TypeEnum) || t == typeof(TypeEnum?);
@@ -209,31 +241,21 @@ namespace BasicBot.GraphQL.SetsAndLinkedAccounts
         {
             if (reader.TokenType == JsonToken.Null) return null;
             var value = serializer.Deserialize<string>(reader);
-            if (value == "TWITTER")
+            switch (value)
             {
-                return TypeEnum.Twitter;
+                case "DISCORD":
+                    return TypeEnum.Discord;
+                case "MIXER":
+                    return TypeEnum.Mixer;
+                case "STEAM":
+                    return TypeEnum.Steam;
+                case "TWITCH":
+                    return TypeEnum.Twitch;
+                case "TWITTER":
+                    return TypeEnum.Twitter;
+                case "XBOX":
+                    return TypeEnum.Xbox;
             }
-            if (value == "TWITCH")
-            {
-                return TypeEnum.Twitch;
-            }
-            if (value == "STEAM")
-            {
-                return TypeEnum.Steam;
-            }
-            if (value == "DISCORD")
-            {
-                return TypeEnum.Discord;
-            }
-            if (value == "XBOX")
-            {
-                return TypeEnum.Xbox;
-            }
-            if (value == "MIXER")
-            {
-                return TypeEnum.Mixer;
-            }
-            
             throw new Exception("Cannot unmarshal type TypeEnum");
         }
 
@@ -245,35 +267,26 @@ namespace BasicBot.GraphQL.SetsAndLinkedAccounts
                 return;
             }
             var value = (TypeEnum)untypedValue;
-            if (value == TypeEnum.Twitter)
+            switch (value)
             {
-                serializer.Serialize(writer, "TWITTER");
-                return;
-            }
-            if (value == TypeEnum.Twitch)
-            {
-                serializer.Serialize(writer, "TWITCH");
-                return;
-            }
-            if (value == TypeEnum.Steam)
-            {
-                serializer.Serialize(writer, "STEAM");
-                return;
-            }
-            if (value == TypeEnum.Discord)
-            {
-                serializer.Serialize(writer, "DISCORD");
-                return;
-            }
-            if (value == TypeEnum.Xbox)
-            {
-                serializer.Serialize(writer, "XBOX");
-                return;
-            }
-            if (value == TypeEnum.Mixer)
-            {
-                serializer.Serialize(writer, "MIXER");
-                return;
+                case TypeEnum.Discord:
+                    serializer.Serialize(writer, "DISCORD");
+                    return;
+                case TypeEnum.Mixer:
+                    serializer.Serialize(writer, "MIXER");
+                    return;
+                case TypeEnum.Steam:
+                    serializer.Serialize(writer, "STEAM");
+                    return;
+                case TypeEnum.Twitch:
+                    serializer.Serialize(writer, "TWITCH");
+                    return;
+                case TypeEnum.Twitter:
+                    serializer.Serialize(writer, "TWITTER");
+                    return;
+                case TypeEnum.Xbox:
+                    serializer.Serialize(writer, "XBOX");
+                    return;
             }
             throw new Exception("Cannot marshal type TypeEnum");
         }

@@ -10,11 +10,12 @@ query GetSetsAndLinkedAccounts( $eventId: ID, $page: Int,$perPage: Int){
                 id
             }
         }
-        sets(page: $page, perPage: $perPage, filters: { showByes: false, hideEmpty: true }){
+        sets(page: $page, perPage: $perPage, filters: { showByes: false, hideEmpty: true, state: [1,2] }){
             nodes {
                 id
                 totalGames
                 state
+                winnerId
                 games {
                     winnerId
                     orderNum

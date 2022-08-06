@@ -77,6 +77,7 @@ namespace BasicBot.Commands
                 if (Random.RandomBool())
                 {
                     (game.Team1, game.Team2) = (game.Team2, game.Team1);
+                    (game.Team1Name, game.Team2Name) = (game.Team2Name, game.Team1Name);
                 }
 
                 await game.BuildPoolPhase().UpdateMessage(game.Message);
@@ -98,6 +99,17 @@ namespace BasicBot.Commands
                         await channel.DeleteAsync();
                     }
                 }
+            }
+        }
+
+        [ComponentInteraction("next")]
+        public async Task Next()
+        {
+            await DeferAsync(true);
+
+            if (GetThing(Context.Interaction.Message.Id) is gamething game)
+            {
+                game.Set.NextGame(0);
             }
         }
 

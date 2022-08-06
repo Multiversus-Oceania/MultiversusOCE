@@ -38,11 +38,11 @@ public static class StartGGHandler
     {
         public Data Data;
 
-        private readonly long EventId;
+        private readonly string EventId;
         private readonly int Page;
         private readonly int PerPage;
 
-        public GetSetsAndLinkedAccounts(long eventId, int page, int perPage)
+        public GetSetsAndLinkedAccounts(string eventId, int page, int perPage)
         {
             EventId = eventId;
             Page = page;
@@ -81,11 +81,12 @@ public static class StartGGHandler
                             id
                         }
                     }
-                    sets(page: $page, perPage: $perPage, filters: { showByes: false, hideEmpty: true }){
+                    sets(page: $page, perPage: $perPage, filters: { showByes: false, hideEmpty: true, state: [1,2] }){
                         nodes {
                             id
                             totalGames
                             state
+                            winnerId
                             games {
                                 winnerId
                                 orderNum
@@ -95,6 +96,7 @@ public static class StartGGHandler
                             }
                             slots{
                                 entrant {
+                                    id
                                     name
                                     participants {
                                         gamerTag
