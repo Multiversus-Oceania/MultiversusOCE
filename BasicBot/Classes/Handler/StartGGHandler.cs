@@ -1,129 +1,161 @@
 using System;
-using System.Net.Http.Headers;
-using System.Text.Json;
-using BasicBot.GraphQL;
-using Microsoft.Extensions.DependencyInjection;
-using StrawberryShake.Serialization;
-using JsonSerializer = System.Text.Json.JsonSerializer;
+using System.Collections.Generic;
+using System.Net.Http;
+using BasicBot.GraphQL.SetsAndLinkedAccounts;
+using RestSharp;
 
 namespace BasicBot.Handler;
 
-public class StartGGHandler
+public static class StartGGHandler
 {
-    public static IStartGGClient Client
+    public class StartGGParameter
     {
-        get
+        public string Value;
+
+        private StartGGParameter(string value)
         {
-            if (client == null)
+            Value = value.Replace("  ", "");
+        }
+
+        public static implicit operator StartGGParameter(string str)
+        {
+            if (str.Trim() == "")
+                return null;
+
+            return new StartGGParameter(str);
+        }
+    }
+
+
+    public interface IStartGGQuery
+    {
+        public StartGGParameter Query();
+
+        public StartGGParameter Variables();
+    }
+
+    public class GetSetsAndLinkedAccounts : IStartGGQuery
+    {
+        public Data Data;
+
+        private readonly long EventId;
+        private readonly int Page;
+        private readonly int PerPage;
+
+        public GetSetsAndLinkedAccounts(long eventId, int page, int perPage)
+        {
+            EventId = eventId;
+            Page = page;
+            PerPage = perPage;
+
+            var a = this.Execute();
+            if (a.IsSuccessful)
+                Data = SetsAndLinkedAccounts.FromJson(a.Content).Data;
+            else
+                throw new HttpRequestException(a.ErrorMessage, null, a.StatusCode);
+        }
+
+        StartGGParameter IStartGGQuery.Variables()
+        {
+            return $@"{{
+                ""eventId"": {EventId},
+                ""page"": {Page},
+                ""perPage"": {PerPage}
+            }}";
+        }
+
+        StartGGParameter IStartGGQuery.Query()
+        {
+            #region Query
+
+            return @"
+            query GetSetsAndLinkedAccounts( $eventId: ID, $page: Int,$perPage: Int){
+                currentUser {
+                    id
+                }
+                event(id: $eventId){
+                    id
+                    tournament {
+                        admins
+                        {
+                            id
+                        }
+                    }
+                    sets(page: $page, perPage: $perPage, filters: { showByes: false, hideEmpty: true }){
+                        nodes {
+                            id
+                            totalGames
+                            state
+                            games {
+                                winnerId
+                                orderNum
+                                stage {
+                                    name
+                                }
+                            }
+                            slots{
+                                entrant {
+                                    name
+                                    participants {
+                                        gamerTag
+                                        requiredConnections {
+                                            id
+                                            externalId
+                                            externalUsername
+                                            type
+                                            url
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            ";
+
+            #endregion
+        }
+    }
+
+    public static List<(string, string)> GetParameters(this IStartGGQuery query)
+    {
+        var parameters = new List<(string, string)>();
+
+        if (query.Query() is StartGGParameter prmQ)
+            parameters.Add(new ValueTuple<string, string>("query", prmQ.Value));
+
+        if (query.Variables() is StartGGParameter prmV)
+            parameters.Add(new ValueTuple<string, string>("variables", prmV.Value));
+
+        return parameters;
+    }
+
+    public static RestResponse Execute(this IStartGGQuery query)
+    {
+        var url = "https://api.start.gg/gql/alpha";
+
+        return Send(url,
+            query.GetParameters()
+        );
+    }
+
+    private static RestResponse Send(string url, List<(string, string)> parameters = null, Method type = Method.Get)
+    {
+        var client = new RestClient(url);
+        client.AddDefaultHeader("Authorization", "Bearer " + Settings.GetSettings().StartGGToken);
+
+        var request = new RestRequest();
+        request.Method = type;
+
+        if (parameters != null)
+            foreach (var a in parameters)
             {
-                Initialize();
+                request.AddParameter(a.Item1, a.Item2);
             }
 
-            return client;
-        }
-    }
+        var response = client.Execute(request);
 
-    private static IStartGGClient client;
-    private static ServiceCollection serviceCollection;
-    private static ServiceProvider serviceProvider;
-
-    private static void Initialize()
-    {
-        serviceCollection = new ServiceCollection();
-
-        serviceCollection.AddSerializer<StartIDSerializer>();
-
-        serviceCollection.AddStartGGClient().ConfigureHttpClient(c =>
-        {
-            c.BaseAddress = new Uri("https://api.start.gg/gql/alpha");
-            c.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue("Bearer", Settings.GetSettings().StartGGToken);
-        });
-
-        serviceProvider = serviceCollection.BuildServiceProvider();
-        client = serviceProvider.GetRequiredService<IStartGGClient>();
-    }
-}
-
-public struct StartID
-{
-    public string String { get; }
-    public int Number => this;
-
-    public StartID(string s)
-    {
-        String = s;
-    }
-
-    public StartID(int i)
-    {
-        String = i.ToString();
-    }
-
-    public static implicit operator string(StartID d)
-    {
-        return d.String;
-    }
-
-    public static implicit operator int(StartID d)
-    {
-        if (int.TryParse(d.String, out var i))
-        {
-            return i;
-        }
-
-        throw new Exception("Failed to convert a StartID to an Int.");
-    }
-
-    public static implicit operator StartID(string d)
-    {
-        return new StartID(d);
-    }
-
-    public static implicit operator StartID(int i)
-    {
-        return new StartID(i);
-    }
-
-    public static bool operator ==(StartID lhs, StartID rhs)
-    {
-        return lhs.String == rhs.String;
-    }
-
-    public static bool operator !=(StartID lhs, StartID rhs)
-    {
-        return lhs.String != rhs.String;
-    }
-
-    public override string ToString()
-    {
-        return String;
-    }
-}
-
-public class StartIDSerializer : ScalarSerializer<JsonElement, StartID>
-{
-    public StartIDSerializer()
-        : base("StartID")
-    {
-    }
-
-    public override StartID Parse(JsonElement serializedValue)
-    {
-        if (serializedValue.TryGetInt32(out var i))
-        {
-            return i;
-        }
-
-        Console.WriteLine(serializedValue.GetRawText());
-        return 1;
-    }
-
-    protected override JsonElement Format(StartID runtimeValue)
-    {
-        // handle the serialization of the runtime representation in case
-        // the scalar is used as a variable.
-        var f = JsonSerializer.SerializeToElement(runtimeValue.String);
-        return f;
+        return response;
     }
 }

@@ -43,7 +43,7 @@ namespace BasicBot.Commands
             await DeferAsync(true);
 
             if (GetThing(Context.Interaction.Message.Id) is gamething game)
-                if (game.User1.Id == Context.User.Id || game.User2.Id == Context.User.Id)
+                if (game.OnTeam(Context.User, game.Team1) || game.OnTeam(Context.User, game.Team2))
                     await game.BuildBanPhase(gld.Maps[selected.First()]).UpdateMessage(game.Message);
         }
 
@@ -58,7 +58,7 @@ namespace BasicBot.Commands
             {
                 if (Context.Interaction.Data.CustomId == "wonlast2")
                 {
-                    (game.User1, game.User2) = (game.User2, game.User1);
+                    (game.Team1, game.Team2) = (game.Team2, game.Team1);
                 }
 
                 await game.BuildPoolPhase().UpdateMessage(game.Message);
@@ -76,7 +76,7 @@ namespace BasicBot.Commands
             {
                 if (Random.RandomBool())
                 {
-                    (game.User1, game.User2) = (game.User2, game.User1);
+                    (game.Team1, game.Team2) = (game.Team2, game.Team1);
                 }
 
                 await game.BuildPoolPhase().UpdateMessage(game.Message);

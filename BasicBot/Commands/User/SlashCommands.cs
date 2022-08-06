@@ -111,11 +111,8 @@ public class SlashCommand : InteractionModuleBase<SocketInteractionContext<Socke
         _msg.AddEmbed(new EmbedBuilder().WithTitle("Building..."));
         var msg = await _msg.SendMessage(channel);
 
-        var gamething = new gamething(Context.Interaction.User, enemy, msg,
-            Context.Guild.Id);
-
+        var gamething = new gamething(Context.Interaction.User, enemy, msg, Context.Guild.Id);
         things[msg.Id] = gamething;
-
         await gamething.BuildFirst().UpdateMessage(msg);
     }
 
