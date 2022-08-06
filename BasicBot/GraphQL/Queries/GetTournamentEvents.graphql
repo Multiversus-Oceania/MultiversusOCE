@@ -5,7 +5,6 @@ query GetTournamentEvents($tournamentSlug: String) {
         events {
             id
             name
-            slug
             state
         }
     }

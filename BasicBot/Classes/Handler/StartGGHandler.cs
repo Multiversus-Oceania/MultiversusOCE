@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
+using BasicBot.GraphQL.EventId;
 using BasicBot.GraphQL.SetsAndLinkedAccounts;
 using RestSharp;
+using Data = BasicBot.GraphQL.SetsAndLinkedAccounts.Data;
 
 namespace BasicBot.Handler;
 
@@ -112,6 +114,47 @@ public static class StartGGHandler
                             }
                         }
                     }
+                }
+            }
+            ";
+
+            #endregion
+        }
+    }
+
+    public class GetEventId : IStartGGQuery
+    {
+        private readonly string Slug;
+
+        public GraphQL.EventId.Data Data;
+
+        public GetEventId(string slug)
+        {
+            Slug = slug;
+            var a = this.Execute();
+
+            if (a.IsSuccessful)
+                Data = EventId.FromJson(a.Content).Data;
+            else
+                throw new HttpRequestException(a.ErrorMessage, null, a.StatusCode);
+        }
+
+        StartGGParameter IStartGGQuery.Variables()
+        {
+            return $@"{{
+                ""slug"": ""{Slug}""
+            }}";
+        }
+
+        StartGGParameter IStartGGQuery.Query()
+        {
+            #region Query
+
+            return @"
+            query GetEventId( $slug: String ){
+                event(slug: $slug){
+                    id
+                    name
                 }
             }
             ";

@@ -119,26 +119,118 @@ public class SlashCommand : InteractionModuleBase<SocketInteractionContext<Socke
     [SlashCommand("remove-channels", "Create a game with the new system.")]
     public async Task removeChannels()
     {
-        await Context.Interaction.RespondAsync("Deleting...", ephemeral: true);
-
         things.Clear();
+
+        var categoryId = Guild.GetDiscordOrMake(Context.Guild).TournamentCategory;
 
         foreach (var category in Context.Guild.CategoryChannels)
         {
-            if (category.Id == 1003163620680683530)
+            if (category.Id == categoryId)
             {
+                await Context.Interaction.RespondAsync("Deleting...", ephemeral: true);
                 foreach (var channel in category.Channels)
                 {
-                    channel.DeleteAsync();
+                    await channel.DeleteAsync();
                 }
 
-                break;
+                await Context.Interaction.ModifyOriginalResponseAsync(x => { x.Content = "Deleted channels"; });
+                return;
             }
         }
+
+        await Context.Interaction.RespondAsync("Category could not be found.", ephemeral: true);
     }
 
     [SlashCommand("start-event", "Start an event hosted on start.gg")]
-    public async Task startEvent(string slug)
+    public async Task startEvent(string url)
     {
+        var gld = Guild.GetDiscordOrMake(Context.Guild);
+
+        var categoryId = Guild.GetDiscordOrMake(Context.Guild).TournamentCategory;
+
+        foreach (var category in Context.Guild.CategoryChannels)
+        {
+            if (category.Id == categoryId)
+            {
+                var urlParts = url.Split("/");
+
+                for (var i = 0; i < urlParts.Length; i++)
+                {
+                    if (urlParts[i] == "tournament" && urlParts.Length >= i + 4)
+                    {
+                        if (urlParts[i + 2] == "event")
+                        {
+                            await DeferAsync(true);
+                            var slug = urlParts[i] + "/" + urlParts[i + 1] + "/" + urlParts[i + 2] + "/" +
+                                       urlParts[i + 3];
+
+                            var eventId = new StartGGHandler.GetEventId(slug);
+                            if (eventId.Data != null && eventId.Data.Event != null)
+                            {
+                                if (runningEvents.ContainsKey(eventId.Data.Event.Id))
+                                {
+                                    await Context.Interaction.ModifyOriginalResponseAsync(
+                                        x => x.Content = "Event already started.");
+                                    runningEvents.Add(eventId.Data.Event.Id, category);
+                                }
+                                else
+                                {
+                                    await Context.Interaction.ModifyOriginalResponseAsync(
+                                        x => x.Content = "Starting Event: " + eventId.Data.Event.Name);
+                                    runningEvents.Add(eventId.Data.Event.Id, category);
+                                }
+
+                                return;
+                            }
+                        }
+                    }
+                }
+
+                await Context.Interaction.RespondAsync("Event not found.", ephemeral: true);
+                return;
+            }
+        }
+
+        await Context.Interaction.RespondAsync("Please set the category for channels to be created in.",
+            ephemeral: true);
+    }
+
+    [SlashCommand("stop-event", "Stop a running event.")]
+    public async Task stopEvent(string url)
+    {
+        var gld = Guild.GetDiscordOrMake(Context.Guild);
+
+        var urlParts = url.Split("/");
+
+        for (var i = 0; i < urlParts.Length; i++)
+        {
+            if (urlParts[i] == "tournament" && urlParts.Length >= i + 4)
+            {
+                if (urlParts[i + 2] == "event")
+                {
+                    await DeferAsync(true);
+                    var slug = urlParts[i] + "/" + urlParts[i + 1] + "/" + urlParts[i + 2] + "/" +
+                               urlParts[i + 3];
+
+                    var eventId = new StartGGHandler.GetEventId(slug);
+                    if (eventId.Data != null && eventId.Data.Event != null)
+                    {
+                        if (runningEvents.ContainsKey(eventId.Data.Event.Id))
+                        {
+                            await Context.Interaction.ModifyOriginalResponseAsync(
+                                x => x.Content = "Stopped Event: " + eventId.Data.Event.Name);
+                            runningEvents.Remove(eventId.Data.Event.Id);
+                            sets.Remove(eventId.Data.Event.Id);
+                            return;
+                        }
+
+                        await Context.Interaction.ModifyOriginalResponseAsync(
+                            x => x.Content = "Event not running.");
+                    }
+                }
+            }
+        }
+
+        await Context.Interaction.RespondAsync("Event not found.", ephemeral: true);
     }
 }

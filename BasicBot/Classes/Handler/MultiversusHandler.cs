@@ -152,7 +152,8 @@ namespace BasicBot.Handler
 
             public MonarkMessage BuildBanPhase(List<string> mapPool)
             {
-                MapPool = mapPool;
+                // Ensure that no link is made to the settings.
+                MapPool = new List<string>(mapPool);
 
                 var msg = new MonarkMessage();
                 if (MapPool != null && MapPool.Count < 2)
@@ -184,7 +185,7 @@ namespace BasicBot.Handler
                 {
                     components.WithButton("Undo Selection", "restart", ButtonStyle.Danger)
                         .WithButton(
-                            "Manually Start Next Game (Only use if it does not start after reporting scores on start.gg)",
+                            "Next Game (If not working after reporting scores)",
                             "next", ButtonStyle.Danger);
                 }
 
@@ -254,12 +255,13 @@ namespace BasicBot.Handler
                         var set = scheduledForDeletion[i].Item1;
                         things.Remove(set.Gamething.Message.Id);
                         await set.Channel.DeleteAsync();
+
+                        // Removes from this list and decreases i to compensate.
+                        scheduledForDeletion.RemoveAt(0);
+                        i--;
                     }
                     else
                     {
-                        // Since times are ordered, anything after the first failure doesn't need to be checked.
-                        // Remove all the deleted items before this one.
-                        scheduledForDeletion.RemoveRange(0, i);
                         break;
                     }
                 }
@@ -397,6 +399,9 @@ namespace BasicBot.Handler
                 }
 
                 eventsToRemove.Clear();
+
+                await Task.Delay(10000);
+                Console.WriteLine("Delay done.");
             }
         }
 
@@ -524,21 +529,33 @@ namespace BasicBot.Handler
                 {
                     // Handle both potential behaviors of either adding to array after each game or by having
                     // the array always be filled with null games and setting them after games are played.
-                    if (startSet.Games.Count >= CurrentGame)
+                    if (startSet.Games.Count >= CurrentGame && startSet.Games.Count < startSet.TotalGames)
                     {
+                        var team1Wins = 0;
+                        var team2Wins = 0;
                         for (var i = 0; i < startSet.Games.Count; i++)
                         {
-                            if (startSet.Games[i] == null)
+                            if (startSet.Games[i] != null)
                             {
-                                // i is the number of games played.
-                                if (i >= CurrentGame && i + 1 < startSet.TotalGames)
+                                // Convenient to also set wonLast here too even though it will be overridden by the next
+                                // loop.
+                                var wonLast = 0;
+                                if (startSet.Games[i].WinnerId == Team1.StartId)
                                 {
-                                    var wonLast = 0;
-                                    if (startSet.Games[i].WinnerId == Team1.StartId)
-                                        wonLast = 1;
-                                    else if (startSet.Games[i].WinnerId == Team2.StartId)
-                                        wonLast = 2;
-                                    await NextGame(wonLast);
+                                    wonLast = 1;
+                                    team1Wins++;
+                                }
+                                else if (startSet.Games[i].WinnerId == Team2.StartId)
+                                {
+                                    wonLast = 2;
+                                    team2Wins++;
+                                }
+
+                                // i is the number of games played - 1.
+                                if (i + 1 >= CurrentGame && i + 1 < startSet.TotalGames)
+                                {
+                                    if (team1Wins < startSet.TotalGames / 2f && team2Wins < startSet.TotalGames / 2f)
+                                        await NextGame(wonLast);
                                 }
                             }
                         }
@@ -563,10 +580,8 @@ namespace BasicBot.Handler
 
             public async Task SendGameMessage(bool ping = false)
             {
-                MonarkMessage _msg;
                 if (ping)
                 {
-                    _msg = new MonarkMessage();
                     var pings = "";
                     foreach (var user in Team1.Users)
                     {
@@ -578,10 +593,10 @@ namespace BasicBot.Handler
                         pings += user.Mention + " ";
                     }
 
-                    await _msg.SendMessage(Channel);
+                    await Channel.SendMessageAsync(pings);
                 }
 
-                _msg = new MonarkMessage();
+                var _msg = new MonarkMessage();
                 _msg.AddEmbed(new EmbedBuilder().WithTitle("Building..."));
                 var msg = await _msg.SendMessage(Channel);
 
