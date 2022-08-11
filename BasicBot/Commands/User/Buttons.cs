@@ -59,6 +59,7 @@ namespace BasicBot.Commands
                 if (Context.Interaction.Data.CustomId == "wonlast2")
                 {
                     (game.Team1, game.Team2) = (game.Team2, game.Team1);
+                    (game.Team1Name, game.Team2Name) = (game.Team2Name, game.Team1Name);
                 }
 
                 await game.BuildPoolPhase().UpdateMessage(game.Message);

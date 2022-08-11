@@ -251,10 +251,17 @@ namespace BasicBot.Handler
                 {
                     if ((scheduledForDeletion[i].Item2 - DateTime.Now).TotalMinutes < 0)
                     {
-                        // Ready for deletion.
-                        var set = scheduledForDeletion[i].Item1;
-                        things.Remove(set.Gamething.Message.Id);
-                        await set.Channel.DeleteAsync();
+                        try
+                        {
+                            // Ready for deletion.
+                            var set = scheduledForDeletion[i].Item1;
+                            things.Remove(set.Gamething.Message.Id);
+                            await set.Channel.DeleteAsync();
+                        }
+                        catch (Exception e)
+                        {
+                            Console.WriteLine(e);
+                        }
 
                         // Removes from this list and decreases i to compensate.
                         scheduledForDeletion.RemoveAt(0);
@@ -273,13 +280,23 @@ namespace BasicBot.Handler
 
                     var perPage = 20;
 
-                    var req = new StartGGHandler.GetSetsAndLinkedAccounts(eventId, 1, perPage);
+                    StartGGHandler.GetSetsAndLinkedAccounts req = null;
+
+                    try
+                    {
+                        req = new StartGGHandler.GetSetsAndLinkedAccounts(eventId, 1, perPage);
+                    }
+                    catch (Exception exception)
+                    {
+                        Console.WriteLine(exception);
+                        continue;
+                    }
 
                     // Check still admin and category still exists.
-                    if (false && (category == null || req.Data.Event.Tournament.Admins == null ||
-                                  req.Data.Event.Tournament.Admins.Where(x => x.Id == req.Data.CurrentUser.Id)
-                                      .Count() !=
-                                  1))
+                    if (category == null || req.Data.Event.Tournament.Admins == null ||
+                        req.Data.Event.Tournament.Admins.Where(x => x.Id == req.Data.CurrentUser.Id)
+                            .Count() !=
+                        1)
                     {
                         Console.Error.WriteLine("Error occurred updating sets.");
                         // Remove existing sets from memory.
@@ -306,8 +323,18 @@ namespace BasicBot.Handler
                         while (true)
                         {
                             // This should really be its own query that doesnt get the self, event and tournament info but oh well.
-                            var setsRequest = new
-                                StartGGHandler.GetSetsAndLinkedAccounts(eventId, i, perPage);
+
+                            StartGGHandler.GetSetsAndLinkedAccounts setsRequest = null;
+
+                            try
+                            {
+                                setsRequest = new StartGGHandler.GetSetsAndLinkedAccounts(eventId, i, perPage);
+                            }
+                            catch (Exception exception)
+                            {
+                                Console.WriteLine(exception);
+                                continue;
+                            }
 
                             foreach (var startSet in setsRequest.Data.Event.Sets.Nodes)
                             {
@@ -343,7 +370,18 @@ namespace BasicBot.Handler
                         var newSets = new Dictionary<string, Set>();
                         foreach (var startSet in startSets)
                         {
-                            newSets.Add(startSet.Id, await Set.CreateSet(category, startSet));
+                            try
+                            {
+                                var set = await Set.CreateSet(category, startSet);
+                                if (set != null)
+                                    newSets.Add(startSet.Id, set);
+
+                                set.Update(startSet);
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine(ex);
+                            }
                         }
 
                         sets.Add(eventId, newSets);
@@ -360,16 +398,32 @@ namespace BasicBot.Handler
                             // Existing game. Check for a change in games played.
                             if (existingSets.ContainsKey(setId))
                             {
-                                var set = existingSets[setId];
-                                foundSets.Add(setId, set);
-                                existingSets.Remove(setId);
+                                try
+                                {
+                                    var set = existingSets[setId];
+                                    foundSets.Add(setId, set);
+                                    existingSets.Remove(setId);
 
-                                set.Update(startSet);
+                                    set.Update(startSet);
+                                }
+                                catch (Exception ex)
+                                {
+                                    Console.WriteLine(ex);
+                                }
                             }
                             // New set started. Create set object and add to dictionary.
                             else
                             {
-                                foundSets.Add(setId, await Set.CreateSet(category, startSet));
+                                try
+                                {
+                                    var set = await Set.CreateSet(category, startSet);
+                                    if (set != null)
+                                        foundSets.Add(setId, set);
+                                }
+                                catch (Exception ex)
+                                {
+                                    Console.WriteLine(ex);
+                                }
                             }
                         }
 
@@ -428,6 +482,14 @@ namespace BasicBot.Handler
 
                 public Team(Entrant entrant, SocketGuild guild)
                 {
+                    if (entrant == null)
+                    {
+                        StartId = "";
+                        Users = new List<SocketUser>();
+                        Name = "";
+                        return;
+                    }
+
                     StartId = entrant.Id;
                     Users = new List<SocketUser>();
                     Name = entrant.Name;
@@ -480,6 +542,11 @@ namespace BasicBot.Handler
                 set.WonLast = 0;
                 set.Team1 = new Team(setInfo.Slots[0].Entrant, category.Guild);
                 set.Team2 = new Team(setInfo.Slots[1].Entrant, category.Guild);
+
+                if (set.Team1.StartId == "" || set.Team2.StartId == "")
+                {
+                    return null;
+                }
 
                 var channel = await category.Guild.CreateTextChannelAsync(
                     $"{setInfo.Slots[0].Entrant.Name} vs {setInfo.Slots[1].Entrant.Name}",

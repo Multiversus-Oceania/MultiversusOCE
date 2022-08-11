@@ -83,7 +83,7 @@ public static class StartGGHandler
                             id
                         }
                     }
-                    sets(page: $page, perPage: $perPage, filters: { showByes: false, hideEmpty: true, state: [1,2] }){
+                    sets(page: $page, perPage: $perPage, filters: { showByes: false, hideEmpty: true, state: [1,2,6] }){
                         nodes {
                             id
                             totalGames
