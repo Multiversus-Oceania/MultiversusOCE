@@ -5,10 +5,12 @@ using System.Linq;
 using System.Threading.Tasks;
 using BasicBot.Handler;
 using BasicBot.MonarkTypes;
+using BasicBot.Multiversus;
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
-using static BasicBot.Handler.Multiversus;
+using static BasicBot.Multiversus.Multiversus;
+using Game = BasicBot.Multiversus.Game;
 
 #endregion
 
@@ -64,20 +66,30 @@ public class SlashCommand : InteractionModuleBase<SocketInteractionContext<Socke
     }
 
     [SlashCommand("game", "Create a game with the new system.")]
-    public async Task game(SocketUser enemy)
+    public async Task game(SocketUser enemy1, SocketUser teammate = null, SocketUser enemy2 = null)
     {
         var gld = Guild.GetDiscordOrMake(Context.Guild);
 
-        // if (enemy.Id == Context.User.Id)
-        // {
-        //     await Context.Interaction.RespondAsync("Cannot challenge yourself.", ephemeral: true);
-        //     return;
-        // }
+        var team1Users = new List<SocketUser>() { Context.User };
+        var team2Users = new List<SocketUser>() { enemy1 };
 
-        if (enemy.IsBot)
+        if (teammate != null) team1Users.Add(teammate);
+        if (enemy2 != null) team2Users.Add(enemy2);
+
+        // Cut out the first value of team1.
+        foreach (var user in team1Users.GetRange(1, team1Users.Count - 1).Union(team2Users))
         {
-            await Context.Interaction.RespondAsync("Cannot challenge a bot.", ephemeral: true);
-            return;
+            if (user.Id == Context.User.Id)
+            {
+                // await Context.Interaction.RespondAsync("Cannot challenge yourself.", ephemeral: true);
+                // return;
+            }
+
+            if (user.IsBot)
+            {
+                await Context.Interaction.RespondAsync("Cannot challenge a bot.", ephemeral: true);
+                return;
+            }
         }
 
         if (Context.Guild.CategoryChannels.Where(c => c.Id == gld.TournamentCategory).ToArray().Length != 1)
@@ -92,17 +104,22 @@ public class SlashCommand : InteractionModuleBase<SocketInteractionContext<Socke
             new OverwritePermissions(viewChannel: PermValue.Allow, sendMessages: PermValue.Allow);
         var deniedPermissions = new OverwritePermissions(viewChannel: PermValue.Deny, sendMessages: PermValue.Deny);
 
-        var channel = await Context.Guild.CreateTextChannelAsync($"{Context.User.Username} vs {enemy.Username}",
+        var overwrites = new List<Overwrite>()
+        {
+            new(Context.Guild.EveryoneRole.Id, PermissionTarget.Role, deniedPermissions)
+        };
+        foreach (var user in team1Users.Union(team2Users))
+            overwrites.Add(new Overwrite(user.Id, PermissionTarget.User, allowedPermissions));
+
+        var team1 = new Team(team1Users);
+        var team2 = new Team(team2Users);
+
+        var channel = await Context.Guild.CreateTextChannelAsync($"{team1.Name} vs {team2.Name}".Replace("/", "-"),
             x =>
             {
                 x.CategoryId = gld.TournamentCategory;
 
-                x.PermissionOverwrites = new[]
-                {
-                    new(Context.User.Id, PermissionTarget.User, allowedPermissions),
-                    new Overwrite(enemy.Id, PermissionTarget.User, allowedPermissions),
-                    new Overwrite(Context.Guild.EveryoneRole.Id, PermissionTarget.Role, deniedPermissions)
-                };
+                x.PermissionOverwrites = overwrites.ToArray();
             });
 
         await Context.Interaction.RespondAsync("Game channel created: " + channel.Mention, ephemeral: true);
@@ -111,15 +128,15 @@ public class SlashCommand : InteractionModuleBase<SocketInteractionContext<Socke
         _msg.AddEmbed(new EmbedBuilder().WithTitle("Building..."));
         var msg = await _msg.SendMessage(channel);
 
-        var gamething = new gamething(Context.Interaction.User, enemy, msg, Context.Guild.Id);
-        things[msg.Id] = gamething;
+        var gamething = new Game(team1, team2, msg, Context.Guild.Id);
+        Games[msg.Id] = gamething;
         await gamething.BuildFirst().UpdateMessage(msg);
     }
 
     [SlashCommand("remove-channels", "Create a game with the new system.")]
     public async Task removeChannels()
     {
-        things.Clear();
+        Games.Clear();
 
         var categoryId = Guild.GetDiscordOrMake(Context.Guild).TournamentCategory;
 
@@ -167,17 +184,17 @@ public class SlashCommand : InteractionModuleBase<SocketInteractionContext<Socke
                             var eventId = new StartGGHandler.GetEventId(slug);
                             if (eventId.Data != null && eventId.Data.Event != null)
                             {
-                                if (runningEvents.ContainsKey(eventId.Data.Event.Id))
+                                if (RunningEvents.ContainsKey(eventId.Data.Event.Id))
                                 {
                                     await Context.Interaction.ModifyOriginalResponseAsync(
                                         x => x.Content = "Event already started.");
-                                    runningEvents.Add(eventId.Data.Event.Id, category);
+                                    RunningEvents.Add(eventId.Data.Event.Id, category);
                                 }
                                 else
                                 {
                                     await Context.Interaction.ModifyOriginalResponseAsync(
                                         x => x.Content = "Starting Event: " + eventId.Data.Event.Name);
-                                    runningEvents.Add(eventId.Data.Event.Id, category);
+                                    RunningEvents.Add(eventId.Data.Event.Id, category);
                                 }
 
                                 return;
@@ -215,12 +232,12 @@ public class SlashCommand : InteractionModuleBase<SocketInteractionContext<Socke
                     var eventId = new StartGGHandler.GetEventId(slug);
                     if (eventId.Data != null && eventId.Data.Event != null)
                     {
-                        if (runningEvents.ContainsKey(eventId.Data.Event.Id))
+                        if (RunningEvents.ContainsKey(eventId.Data.Event.Id))
                         {
                             await Context.Interaction.ModifyOriginalResponseAsync(
                                 x => x.Content = "Stopped Event: " + eventId.Data.Event.Name);
-                            runningEvents.Remove(eventId.Data.Event.Id);
-                            sets.Remove(eventId.Data.Event.Id);
+                            RunningEvents.Remove(eventId.Data.Event.Id);
+                            Sets.Remove(eventId.Data.Event.Id);
                             return;
                         }
 

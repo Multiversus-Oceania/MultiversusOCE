@@ -2,7 +2,6 @@
 
 using System;
 using System.Threading.Tasks;
-using BasicBot.Handler;
 using BasicBot.Services;
 using Discord;
 using Discord.Commands;
@@ -28,8 +27,7 @@ internal class Program
     {
         Console.WriteLine("Hi");
 
-        // Multiversus.runningEvents.Add("723972", null);
-        Multiversus.UpdateSets();
+        Multiversus.Multiversus.UpdateSets();
 
         discordClient = new DiscordSocketClient(new DiscordSocketConfig
             { LogLevel = LogSeverity.Verbose, GatewayIntents = GatewayIntents.All, AlwaysDownloadUsers = true });

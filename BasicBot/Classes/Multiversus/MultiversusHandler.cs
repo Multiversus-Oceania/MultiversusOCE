@@ -3,259 +3,43 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using BasicBot.GraphQL.SetsAndLinkedAccounts;
+using BasicBot.Handler;
 using Discord;
 using Discord.Rest;
 using Discord.WebSocket;
 using static BasicBot.MonarkTypes.Message;
 
-namespace BasicBot.Handler
+namespace BasicBot.Multiversus
 {
     public static class Multiversus
     {
-        public static Dictionary<ulong, gamething> things = new();
+        public static Dictionary<ulong, Game> Games = new();
 
-        public static gamething GetThing(ulong thing)
+        public static Game GetGame(ulong thing)
         {
-            if (things.ContainsKey(thing))
-                return things[thing];
+            if (Games.ContainsKey(thing))
+                return Games[thing];
             return null;
         }
 
-        public class gamething
-        {
-            public string BlockedMap = "";
-            public ulong GuildId;
-            public string SelectedMap = "";
-            public SocketUser[] Team1;
-            public string Team1Name;
-            public SocketUser[] Team2;
-            public string Team2Name;
-            public List<string> MapPool;
-            public Set Set;
-
-            public gamething(SocketUser team1, SocketUser team2,
-                IUserMessage message, ulong guild)
-            {
-                Team1 = new[] { team1 };
-                Team1Name = team1.Username;
-                Team2 = new[] { team2 };
-                Team2Name = team2.Username;
-                Message = message;
-                GuildId = guild;
-                Set = null;
-            }
-
-            public gamething(Set set, IUserMessage message)
-            {
-                var team1Bans = set.CurrentGame != 1 ? set.WonLast == 1 : Random.RandomBool();
-                if (team1Bans)
-                {
-                    Team1 = set.Team1.Users.ToArray();
-                    Team1Name = set.Team1.Name;
-                    Team2 = set.Team2.Users.ToArray();
-                    Team2Name = set.Team2.Name;
-                }
-                else
-                {
-                    Team1 = set.Team2.Users.ToArray();
-                    Team1Name = set.Team2.Name;
-                    Team2 = set.Team1.Users.ToArray();
-                    Team2Name = set.Team1.Name;
-                }
-
-                Message = message;
-                GuildId = set.Channel.GuildId;
-                Set = set;
-            }
-
-            public IUserMessage Message { get; set; }
-
-
-            public BasicBot.Settings.Guild gld => Guild.GetDiscordOrMake(GuildId);
-
-            public Dictionary<string, List<string>> Maps => gld.Maps;
-
-            public bool OnTeam(SocketUser user, SocketUser[] team)
-            {
-                foreach (var teamMember in team)
-                {
-                    if (teamMember.Id == user.Id) return true;
-                }
-
-                return false;
-            }
-
-            public bool IsTurn(SocketUser user)
-            {
-                var turn = BlockedMap == "";
-
-                return (turn && OnTeam(user, Team1)) || (!turn && OnTeam(user, Team2));
-            }
-
-            public void AddMapBanned(SocketUser user, string mapBan)
-            {
-                if (OnTeam(user, Team1))
-                {
-                    MapPool.Remove(mapBan);
-                    BlockedMap = mapBan;
-                }
-            }
-
-            public async Task<bool> SelectMap(SocketUser user, string map)
-            {
-                if (IsTurn(user))
-                {
-                    if (BlockedMap == "")
-                    {
-                        AddMapBanned(user, map);
-                        await BuildSelectPhase().UpdateMessage(Message);
-                    }
-                    else
-                    {
-                        SelectedMap = map;
-                        await BuildDonePhase().UpdateMessage(Message);
-                    }
-
-                    return true;
-                }
-
-                return false;
-            }
-
-            public MonarkMessage BuildSelectPhase()
-            {
-                var msg = new MonarkMessage();
-                msg.Components = new ComponentBuilder()
-                    .WithSelectMenus("bans", BuildBanSelectOptions(), "Pick a map to select")
-                    .WithButton("Restart Map Selection", "restart", ButtonStyle.Danger).Build();
-                msg.AddEmbed(new EmbedBuilder().WithTitle("Please select a map to play").AddField($"{Team1Name}",
-                    $"Map Banned:\n{BlockedMap}", true).AddField($"{Team2Name} (Your Turn)",
-                    "Map Selected", true));
-
-
-                return msg;
-            }
-
-            public MonarkMessage BuildPoolPhase()
-            {
-                if (Maps.Count == 0) return "There are no map pools created";
-
-                if (Maps.Count == 1) return BuildBanPhase(Maps.First().Value);
-
-                var message = new MonarkMessage();
-                message.AddEmbed(new EmbedBuilder().WithTitle("Please select a map pool"));
-                message.Components = new ComponentBuilder().WithSelectMenus("maps", BuildSelectOptions())
-                    .WithButton("Restart Map Selection", "restart", ButtonStyle.Danger).Build();
-
-                return message;
-            }
-
-            public MonarkMessage BuildBanPhase(List<string> mapPool)
-            {
-                // Ensure that no link is made to the settings.
-                MapPool = new List<string>(mapPool);
-
-                var msg = new MonarkMessage();
-                if (MapPool != null && MapPool.Count < 2)
-                {
-                    msg.AddEmbed(new EmbedBuilder().WithTitle("Error")
-                        .AddField("Error", "An error has occurred. The map pool is empty."));
-                    return msg;
-                }
-
-                msg.Components = new ComponentBuilder()
-                    .WithSelectMenus("bans", BuildBanSelectOptions(), "Pick a map to ban")
-                    .WithButton("Restart Map Selection", "restart", ButtonStyle.Danger).Build();
-                msg.AddEmbed(new EmbedBuilder().WithTitle("Please select a map to ban").AddField(
-                    $"{Team1Name} (Your Turn)",
-                    $"Map Banned:\n{BlockedMap}", true).AddField($"{Team2Name}",
-                    "Map selected:", true));
-                return msg;
-            }
-
-            public MonarkMessage BuildDonePhase()
-            {
-                var msg = new MonarkMessage();
-                var components = new ComponentBuilder();
-                if (Set == null)
-                {
-                    components.WithButton("New Game", "restart").WithButton("End set", "end", ButtonStyle.Danger);
-                }
-                else
-                {
-                    components.WithButton("Undo Selection", "restart", ButtonStyle.Danger)
-                        .WithButton(
-                            "Next Game (If not working after reporting scores)",
-                            "next", ButtonStyle.Danger);
-                }
-
-                msg.Components = components.Build();
-
-                msg.AddEmbed(new EmbedBuilder().WithDescription("Done").AddField($"{Team1Name}",
-                    $"Maps Banned:\n{BlockedMap}", true).AddField($"{Team2Name}",
-                    $"Maps Selected:\n{SelectedMap}", true));
-
-                return msg;
-            }
-
-            public List<SelectMenuOptionBuilder> BuildBanSelectOptions()
-            {
-                var options = new List<SelectMenuOptionBuilder>();
-
-                foreach (var a in MapPool)
-                    options.Add(new SelectMenuOptionBuilder(a, a));
-
-                return options;
-            }
-
-            public MonarkMessage BuildFirst()
-            {
-                try
-                {
-                    var message = new MonarkMessage();
-                    message.AddEmbed(new EmbedBuilder().WithTitle("Please select the state of the game."));
-                    message.Components =
-                        new ComponentBuilder()
-                            .WithButton("First game of the set", "coinflip")
-                            .WithButton($"{Team1Name} won last game", "wonlast1", ButtonStyle.Success)
-                            .WithButton($"{Team2Name} won last game", "wonlast2", ButtonStyle.Success)
-                            .WithButton("End set", "end", ButtonStyle.Danger).Build();
-                    return message;
-                }
-                catch (Exception ex)
-                {
-                    return ex.Message;
-                }
-            }
-
-            public List<SelectMenuOptionBuilder> BuildSelectOptions()
-            {
-                var options = new List<SelectMenuOptionBuilder>();
-
-                foreach (var a in Maps.Keys) options.Add(new SelectMenuOptionBuilder(a, a));
-
-                return options;
-            }
-        }
-
-        public static Dictionary<string, Dictionary<string, Set>> sets = new();
-        public static Dictionary<string, SocketCategoryChannel> runningEvents = new();
-        public static List<(Set, DateTime)> scheduledForDeletion = new();
+        public static Dictionary<string, Dictionary<string, Set>> Sets = new();
+        public static Dictionary<string, SocketCategoryChannel> RunningEvents = new();
+        public static List<(Set, DateTime)> ScheduledForDeletion = new();
 
         public static async void UpdateSets()
         {
             var eventsToRemove = new List<string>();
             while (true)
             {
-                for (var i = 0; i < scheduledForDeletion.Count; i++)
+                for (var i = 0; i < ScheduledForDeletion.Count; i++)
                 {
-                    if ((scheduledForDeletion[i].Item2 - DateTime.Now).TotalMinutes < 0)
+                    if ((ScheduledForDeletion[i].Item2 - DateTime.Now).TotalMinutes < 0)
                     {
                         try
                         {
                             // Ready for deletion.
-                            var set = scheduledForDeletion[i].Item1;
-                            things.Remove(set.Gamething.Message.Id);
+                            var set = ScheduledForDeletion[i].Item1;
+                            Games.Remove(set.Game.Message.Id);
                             await set.Channel.DeleteAsync();
                         }
                         catch (Exception e)
@@ -264,7 +48,7 @@ namespace BasicBot.Handler
                         }
 
                         // Removes from this list and decreases i to compensate.
-                        scheduledForDeletion.RemoveAt(0);
+                        ScheduledForDeletion.RemoveAt(0);
                         i--;
                     }
                     else
@@ -273,7 +57,7 @@ namespace BasicBot.Handler
                     }
                 }
 
-                foreach (var e in runningEvents)
+                foreach (var e in RunningEvents)
                 {
                     var eventId = e.Key;
                     var category = e.Value;
@@ -300,9 +84,9 @@ namespace BasicBot.Handler
                     {
                         Console.Error.WriteLine("Error occurred updating sets.");
                         // Remove existing sets from memory.
-                        if (sets.ContainsKey(eventId))
+                        if (Sets.ContainsKey(eventId))
                         {
-                            sets[eventId].Clear();
+                            Sets[eventId].Clear();
                         }
 
                         break;
@@ -365,7 +149,7 @@ namespace BasicBot.Handler
                     // Check if games have changed on existing sets (New map selection in discord.)
 
                     // If the dictionary does already have sets for this event, no point checking as all sets will be new.
-                    if (!sets.ContainsKey(eventId))
+                    if (!Sets.ContainsKey(eventId))
                     {
                         var newSets = new Dictionary<string, Set>();
                         foreach (var startSet in startSets)
@@ -384,12 +168,12 @@ namespace BasicBot.Handler
                             }
                         }
 
-                        sets.Add(eventId, newSets);
+                        Sets.Add(eventId, newSets);
                     }
                     else
                     {
                         var foundSets = new Dictionary<string, Set>();
-                        var existingSets = sets[eventId];
+                        var existingSets = Sets[eventId];
                         foreach (var startSet in startSets)
                         {
                             if (startSet.Id == null) continue;
@@ -433,7 +217,7 @@ namespace BasicBot.Handler
                             // Handle set end.
                             // Delay for ggs (5 mins).
                             // Delete discord channel.
-                            scheduledForDeletion.Add((set.Value, DateTime.Now.AddMinutes(5)));
+                            ScheduledForDeletion.Add((set.Value, DateTime.Now.AddMinutes(5)));
 
                             var _msg = new MonarkMessage();
                             _msg.AddEmbed(new EmbedBuilder().WithTitle("Thank you for playing.")
@@ -443,13 +227,13 @@ namespace BasicBot.Handler
                         }
 
                         // Assign new list of sets to the sets dict.
-                        sets[eventId] = foundSets;
+                        Sets[eventId] = foundSets;
                     }
                 }
 
                 for (var i = 0; i < eventsToRemove.Count; i++)
                 {
-                    runningEvents.Remove(eventsToRemove[i]);
+                    RunningEvents.Remove(eventsToRemove[i]);
                 }
 
                 eventsToRemove.Clear();
@@ -461,11 +245,11 @@ namespace BasicBot.Handler
 
         public static Set GetSet(string eventId, string setId)
         {
-            if (sets.ContainsKey(eventId))
+            if (Sets.ContainsKey(eventId))
             {
-                if (sets[eventId].ContainsKey(setId))
+                if (Sets[eventId].ContainsKey(setId))
                 {
-                    return sets[eventId][setId];
+                    return Sets[eventId][setId];
                 }
             }
 
@@ -474,46 +258,10 @@ namespace BasicBot.Handler
 
         public class Set
         {
-            public struct Team
-            {
-                public string StartId;
-                public List<SocketUser> Users;
-                public string Name;
-
-                public Team(Entrant entrant, SocketGuild guild)
-                {
-                    if (entrant == null)
-                    {
-                        StartId = "";
-                        Users = new List<SocketUser>();
-                        Name = "";
-                        return;
-                    }
-
-                    StartId = entrant.Id;
-                    Users = new List<SocketUser>();
-                    Name = entrant.Name;
-                    // Get the discord users out of the set info.
-                    foreach (var participant in entrant.Participants)
-                    {
-                        foreach (var connection in participant.RequiredConnections)
-                        {
-                            if (connection.Type != TypeEnum.Discord) continue;
-
-                            if (ulong.TryParse(connection.ExternalId, out var id))
-                            {
-                                SocketUser user = guild.GetUser(id);
-                                Users.Add(user);
-                            }
-                        }
-                    }
-                }
-            }
-
             public int CurrentGame;
             public int WonLast;
             public List<string> SelectedMaps = new();
-            public gamething Gamething;
+            public Game Game;
             public RestTextChannel Channel;
             public Team Team1;
             public Team Team2;
@@ -543,7 +291,7 @@ namespace BasicBot.Handler
                 set.Team1 = new Team(setInfo.Slots[0].Entrant, category.Guild);
                 set.Team2 = new Team(setInfo.Slots[1].Entrant, category.Guild);
 
-                if (set.Team1.StartId == "" || set.Team2.StartId == "")
+                if (set.Team1.Id == "" || set.Team2.Id == "")
                 {
                     return null;
                 }
@@ -590,7 +338,7 @@ namespace BasicBot.Handler
             {
                 // Check if games have changed.
                 // If so, create new message.
-                // Before modifying old gamething, get the selected map and save it.
+                // Before modifying old game, get the selected map and save it.
 
                 if (startSet.Games != null)
                 {
@@ -607,12 +355,12 @@ namespace BasicBot.Handler
                                 // Convenient to also set wonLast here too even though it will be overridden by the next
                                 // loop.
                                 var wonLast = 0;
-                                if (startSet.Games[i].WinnerId == Team1.StartId)
+                                if (startSet.Games[i].WinnerId == Team1.Id)
                                 {
                                     wonLast = 1;
                                     team1Wins++;
                                 }
-                                else if (startSet.Games[i].WinnerId == Team2.StartId)
+                                else if (startSet.Games[i].WinnerId == Team2.Id)
                                 {
                                     wonLast = 2;
                                     team2Wins++;
@@ -634,13 +382,13 @@ namespace BasicBot.Handler
             {
                 WonLast = wonLast;
                 CurrentGame++;
-                SelectedMaps.Add(Gamething.SelectedMap);
+                SelectedMaps.Add(Game.SelectedMap);
 
-                var _msg = Gamething.BuildDonePhase();
+                var _msg = Game.BuildDonePhase();
                 _msg.Components = null;
-                await _msg.UpdateMessage(Gamething.Message);
+                await _msg.UpdateMessage(Game.Message);
 
-                things.Remove(Gamething.Message.Id);
+                Games.Remove(Game.Message.Id);
 
                 await SendGameMessage();
             }
@@ -667,15 +415,15 @@ namespace BasicBot.Handler
                 _msg.AddEmbed(new EmbedBuilder().WithTitle("Building..."));
                 var msg = await _msg.SendMessage(Channel);
 
-                Gamething = new gamething(this, msg);
+                Game = new Game(this, msg);
 
-                things[msg.Id] = Gamething;
+                Games[msg.Id] = Game;
 
                 // If the last game was manually set, choose who won last game.
                 if (WonLast != 0 || CurrentGame == 1)
-                    await Gamething.BuildPoolPhase().UpdateMessage(msg);
+                    await Game.BuildPoolPhase().UpdateMessage(msg);
                 else
-                    await Gamething.BuildFirst().UpdateMessage(msg);
+                    await Game.BuildFirst().UpdateMessage(msg);
             }
         }
     }

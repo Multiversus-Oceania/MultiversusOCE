@@ -1,10 +1,11 @@
 ﻿using System.Linq;
 using System.Threading.Tasks;
 using BasicBot.Handler;
+using BasicBot.Multiversus;
 using Discord.Interactions;
 using Discord.WebSocket;
-using static BasicBot.Handler.Multiversus;
 using static BasicBot.MonarkTypes.Message;
+using static BasicBot.Multiversus.Multiversus;
 
 namespace BasicBot.Commands
 {
@@ -14,7 +15,7 @@ namespace BasicBot.Commands
         public async Task RoleSelection(string id, string[] selected)
         {
             await DeferAsync(true);
-            if (GetThing(Context.Interaction.Message.Id) is gamething game)
+            if (GetGame(Context.Interaction.Message.Id) is Game game)
             {
                 MonarkMessage msg = "Bugged";
 
@@ -42,7 +43,7 @@ namespace BasicBot.Commands
 
             await DeferAsync(true);
 
-            if (GetThing(Context.Interaction.Message.Id) is gamething game)
+            if (GetGame(Context.Interaction.Message.Id) is Game game)
                 if (game.OnTeam(Context.User, game.Team1) || game.OnTeam(Context.User, game.Team2))
                     await game.BuildBanPhase(gld.Maps[selected.First()]).UpdateMessage(game.Message);
         }
@@ -54,13 +55,14 @@ namespace BasicBot.Commands
 
             await DeferAsync(true);
 
-            if (GetThing(Context.Interaction.Message.Id) is gamething game)
+            if (GetGame(Context.Interaction.Message.Id) is Game game)
             {
                 if (Context.Interaction.Data.CustomId == "wonlast2")
                 {
                     (game.Team1, game.Team2) = (game.Team2, game.Team1);
-                    (game.Team1Name, game.Team2Name) = (game.Team2Name, game.Team1Name);
                 }
+
+                game.CoinflipWinner = null;
 
                 await game.BuildPoolPhase().UpdateMessage(game.Message);
             }
@@ -73,15 +75,17 @@ namespace BasicBot.Commands
 
             await DeferAsync(true);
 
-            if (GetThing(Context.Interaction.Message.Id) is gamething game)
+            if (GetGame(Context.Interaction.Message.Id) is Game game)
             {
                 if (Random.RandomBool())
                 {
                     (game.Team1, game.Team2) = (game.Team2, game.Team1);
-                    (game.Team1Name, game.Team2Name) = (game.Team2Name, game.Team1Name);
                 }
 
-                await game.BuildPoolPhase().UpdateMessage(game.Message);
+                game.CoinflipWinner = game.Team1;
+
+                var _msg = game.BuildPoolPhase();
+                await _msg.UpdateMessage(game.Message);
             }
         }
 
@@ -90,9 +94,9 @@ namespace BasicBot.Commands
         {
             await DeferAsync(true);
 
-            if (GetThing(Context.Interaction.Message.Id) is gamething game)
+            if (GetGame(Context.Interaction.Message.Id) is Game game)
             {
-                things.Remove(game.Message.Id);
+                Games.Remove(game.Message.Id);
                 foreach (var channel in Context.Guild.Channels)
                 {
                     if (channel.Id == Context.Interaction.ChannelId)
@@ -108,7 +112,7 @@ namespace BasicBot.Commands
         {
             await DeferAsync(true);
 
-            if (GetThing(Context.Interaction.Message.Id) is gamething game)
+            if (GetGame(Context.Interaction.Message.Id) is Game game)
             {
                 game.Set.NextGame(0);
             }
@@ -119,10 +123,11 @@ namespace BasicBot.Commands
         {
             await DeferAsync(true);
 
-            if (GetThing(Context.Interaction.Message.Id) is gamething game)
+            if (GetGame(Context.Interaction.Message.Id) is Game game)
             {
                 game.BlockedMap = "";
                 game.SelectedMap = "";
+                game.CoinflipWinner = null;
 
                 await game.BuildFirst().UpdateMessage(game.Message);
             }
