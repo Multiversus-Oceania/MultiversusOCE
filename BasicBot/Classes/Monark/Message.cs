@@ -1,38 +1,42 @@
-﻿using Discord;
-using Discord.WebSocket;
-using Newtonsoft.Json;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Discord.Webhook;
 using System.Net;
+using System.Threading.Tasks;
 using BasicBot.Handler;
+using Discord;
+using Discord.Webhook;
+using Discord.WebSocket;
 
 namespace BasicBot.MonarkTypes
 {
     public static class Message
     {
-        public static string GetStickerUrl(this IStickerItem item) => CDN.GetStickerUrl(item.Id, item.Format);
+        public static string GetStickerUrl(this IStickerItem item)
+        {
+            return CDN.GetStickerUrl(item.Id, item.Format);
+        }
+
         private static string FormatToExtension(this StickerFormatType format)
         {
             return format switch
             {
-                StickerFormatType.None or StickerFormatType.Png or StickerFormatType.Apng => "png", // In the case of the Sticker endpoint, the sticker will be available as PNG if its format_type is PNG or APNG, and as Lottie if its format_type is LOTTIE.
+                StickerFormatType.None or StickerFormatType.Png
+                    or StickerFormatType
+                        .Apng => "png", // In the case of the Sticker endpoint, the sticker will be available as PNG if its format_type is PNG or APNG, and as Lottie if its format_type is LOTTIE.
                 StickerFormatType.Lottie => "lottie",
-                _ => throw new ArgumentException(nameof(format)),
+                _ => throw new ArgumentException(nameof(format))
             };
         }
 
         public class MonarkMessage
         {
-            public string Content = null;
+            public string Content;
             public List<string> Errors = new();
-            public MessageReference Reference = null;
-            public List<Embed> Embeds = null;
-            public List<MonarkAttachment> Attachments = null;
+            public MessageReference Reference;
+            public List<Embed> Embeds;
+            public List<MonarkAttachment> Attachments;
             public MessageComponent Components = null;
 
             public static implicit operator MonarkMessage(string str)
@@ -66,14 +70,12 @@ namespace BasicBot.MonarkTypes
                     return null;
                 }
 
-                List<Task<FileAttachment>> Tasks = Attachments.Select(x => x.Build()).ToList();
+                var Tasks = Attachments.Select(x => x.Build()).ToList();
                 await Task.WhenAll(Tasks);
 
-                var results = Tasks.
-                    Where(
-                    x => 
-                    x.IsCompletedSuccessfully).
-                    Select(x => 
+                var results = Tasks.Where(
+                    x =>
+                        x.IsCompletedSuccessfully).Select(x =>
                     x.Result);
 
                 if (results.Count() > 0)
@@ -97,7 +99,7 @@ namespace BasicBot.MonarkTypes
                     }
                     else
                     {
-                        Errors.Add($"Failed to upload");
+                        Errors.Add("Failed to upload");
                     }
                 }
 
@@ -127,10 +129,8 @@ namespace BasicBot.MonarkTypes
                 {
                     Reference = Msg.Reference;
                 }
-                    
+
                 SetupAttachments(Msg.Attachments.ToList(), Msg.Stickers.ToList());
-
-
             }
 
             public MonarkMessage(string content)
@@ -141,14 +141,20 @@ namespace BasicBot.MonarkTypes
             public MonarkMessage(string content, MonarkEmbed embed)
             {
                 Content = content;
-                Embeds = new () {embed};
+                Embeds = new List<Embed> { embed };
             }
 
-            public MonarkMessage() { }
+            public MonarkMessage()
+            {
+            }
 
-            public static Dictionary<ulong, IDMChannel> UserDmsChannels = new Dictionary<ulong, IDMChannel>();
+            public static Dictionary<ulong, IDMChannel> UserDmsChannels = new();
 
-            public async Task<IUserMessage> SendMessageDM(IUser user) => await SendMessageDM(user.Id);
+            public async Task<IUserMessage> SendMessageDM(IUser user)
+            {
+                return await SendMessageDM(user.Id);
+            }
+
             public async Task<IUserMessage> SendMessageDM(ulong id)
             {
                 if (UserDmsChannels.ContainsKey(id))
@@ -162,17 +168,18 @@ namespace BasicBot.MonarkTypes
                     UserDmsChannels[id] = chnl;
                     return await SendMessage(chnl);
                 }
-                return null;                
+
+                return null;
             }
 
             public async Task<IUserMessage> SendMessage(IMessageChannel chnl)
             {
-
                 if (await BuildAttachment() is IEnumerable<FileAttachment> Acc)
                 {
                     try
                     {
-                        return await chnl.SendFilesAsync(Acc, Content, false, null, null, AllowedMentions.None, Reference, Components, null, MakeEmbeds());
+                        return await chnl.SendFilesAsync(Acc, Content, false, null, null, AllowedMentions.None,
+                            Reference, Components, null, MakeEmbeds());
                     }
                     catch
                     {
@@ -180,16 +187,15 @@ namespace BasicBot.MonarkTypes
                     }
                 }
                 //does not have attachments
-                else
+
+                try
                 {
-                    try
-                    {
-                        return await chnl.SendMessageAsync(Content, false, null, null, AllowedMentions.None, Reference, Components, null, MakeEmbeds());
-                    }
-                    catch(Exception exe)
-                    {
-                        return null;
-                    }
+                    return await chnl.SendMessageAsync(Content, false, null, null, AllowedMentions.None, Reference,
+                        Components, null, MakeEmbeds());
+                }
+                catch (Exception exe)
+                {
+                    return null;
                 }
             }
 
@@ -201,64 +207,57 @@ namespace BasicBot.MonarkTypes
                 }
                 catch (Exception exe)
                 {
-
                 }
             }
 
             public async Task UpdateMessage(IUserMessage msg)
             {
-
                 try
                 {
-                    await msg.ModifyAsync(x => x = UpdateProperties(x)); ;
+                    await msg.ModifyAsync(x => x = UpdateProperties(x));
                 }
                 catch (Exception exe)
                 {
-
                 }
             }
 
             public async Task UpdateMessage(SocketInteraction msg)
             {
-
                 try
                 {
-                    await msg.ModifyOriginalResponseAsync(x => x = UpdateProperties(x)); ;
+                    await msg.ModifyOriginalResponseAsync(x => x = UpdateProperties(x));
+                    ;
                 }
                 catch (Exception exe)
                 {
-
                 }
             }
 
             private MessageProperties UpdateProperties(MessageProperties prop)
             {
-                if (this.Content != null)
-                {
-                    prop.Content = this.Content;
-                }
-                if (this.Components != null)
-                {
-                    prop.Components = this.Components;
-                }
-                if (this.Embeds != null && Embeds.Count > 0)
-                {
-                    prop.Embeds = this.Embeds.ToArray();
-                }
+                prop.Content = Content;
+                prop.Components = Components;
 
-
+                if (Embeds != null && Embeds.Count > 0)
+                {
+                    prop.Embeds = Embeds.ToArray();
+                }
+                else
+                {
+                    prop.Embeds = null;
+                }
 
                 return prop;
             }
 
             public async Task SendMessage(SocketInteraction interaction, bool ephemeral = true)
             {
-
                 if (await BuildAttachment() is IEnumerable<FileAttachment> Acc)
                 {
                     try
                     {
-                        await interaction.SendMsgFiles(Acc, Content, MakeEmbeds(), false, ephemeral, AllowedMentions.None, Components);
+                        await interaction.SendMsgFiles(Acc, Content, MakeEmbeds(), false, ephemeral,
+                            AllowedMentions.None, Components);
                         return;
                     }
                     catch
@@ -267,35 +266,31 @@ namespace BasicBot.MonarkTypes
                     }
                 }
                 //does not have attachments
-                else
+
+                try
                 {
-                    try
-                    {
-                        await interaction.SendMsg(Content, MakeEmbeds(), false, ephemeral, AllowedMentions.None, Components);
-                        return;
-                    }
-                    catch
-                    {
-                        return;
-                    }
+                    await interaction.SendMsg(Content, MakeEmbeds(), false, ephemeral, AllowedMentions.None,
+                        Components);
+                }
+                catch
+                {
                 }
             }
 
             public async Task<ulong> SendMessage(DiscordWebhookClient client, WebhookUser user, ulong? threadId)
             {
-                
-
                 if (Reference != null)
                 {
-                    List<Embed> embeds = new List<Embed>();
-                    embeds.Add(MonarkEmbed.CreateLinkEmbed("Reply to", $"https://discord.com/channels/{Reference.GuildId}/{Reference.ChannelId}/{Reference.MessageId}"));
+                    var embeds = new List<Embed>();
+                    embeds.Add(MonarkEmbed.CreateLinkEmbed("Reply to",
+                        $"https://discord.com/channels/{Reference.GuildId}/{Reference.ChannelId}/{Reference.MessageId}"));
 
                     if (Embeds != null)
                     {
                         embeds.AddRange(Embeds);
                     }
-                    Embeds = embeds;
 
+                    Embeds = embeds;
                 }
 
                 //has attachments
@@ -303,7 +298,8 @@ namespace BasicBot.MonarkTypes
                 {
                     try
                     {
-                        return await client.SendFilesAsync(Acc, Content, false, MakeEmbeds(), user.UserName, user.UrlProfile, null, null, null, threadId: threadId);
+                        return await client.SendFilesAsync(Acc, Content, false, MakeEmbeds(), user.UserName,
+                            user.UrlProfile, null, null, null, threadId: threadId);
                     }
                     catch (Exception exe)
                     {
@@ -311,30 +307,30 @@ namespace BasicBot.MonarkTypes
                     }
                 }
                 //does not have attachments
-                else
+
+                try
                 {
-                    try
-                    {
-                        return await client.SendMessageAsync(Content, false, MakeEmbeds(), user.UserName, user.UrlProfile, null, null, null, threadId: threadId);
-                    }
-                    catch (Exception exe)
-                    {
-                        return 0;
-                    }
+                    return await client.SendMessageAsync(Content, false, MakeEmbeds(), user.UserName, user.UrlProfile,
+                        null, null, null, threadId: threadId);
+                }
+                catch (Exception exe)
+                {
+                    return 0;
                 }
             }
 
-            public void AddEmbed(EmbedBuilder embedBuilder) =>
+            public void AddEmbed(EmbedBuilder embedBuilder)
+            {
                 AddEmbed(embedBuilder.Build());
+            }
 
             public void AddEmbed(Embed embed)
             {
                 if (Embeds == null)
                     Embeds = new List<Embed>();
-                
+
                 Embeds.Add(embed);
             }
-        
         }
 
 
@@ -353,26 +349,27 @@ namespace BasicBot.MonarkTypes
                 Url = link;
                 Name = name;
             }
-            public MonarkAttachment() { }
+
+            public MonarkAttachment()
+            {
+            }
 
 
             public async Task<FileAttachment> Build()
             {
-                WebClient webClient = new WebClient();
+                var webClient = new WebClient();
 
-                byte[] data = await webClient.DownloadDataTaskAsync(Url);
+                var data = await webClient.DownloadDataTaskAsync(Url);
 
-                MemoryStream mem = new MemoryStream(data);
+                var mem = new MemoryStream(data);
                 return new FileAttachment(mem, Name);
             }
-
         }
-
 
 
         public class MonarkEmbed
         {
-            public EmbedBuilder Embed = new EmbedBuilder();
+            public EmbedBuilder Embed = new();
 
             public static implicit operator MonarkEmbed(string content)
             {
@@ -393,7 +390,7 @@ namespace BasicBot.MonarkTypes
             {
                 return em.Embed;
             }
-           
+
             public MonarkEmbed(string content)
             {
                 Embed.Description = content;
@@ -410,7 +407,8 @@ namespace BasicBot.MonarkTypes
 
 
             public MonarkEmbed()
-            { }
+            {
+            }
         }
 
 
@@ -425,12 +423,15 @@ namespace BasicBot.MonarkTypes
             }
 
 
-            public WebhookUser(string name, string url) 
+            public WebhookUser(string name, string url)
             {
                 UserName = name;
                 UrlProfile = url;
             }
-            public WebhookUser() { }
+
+            public WebhookUser()
+            {
+            }
         }
     }
 }

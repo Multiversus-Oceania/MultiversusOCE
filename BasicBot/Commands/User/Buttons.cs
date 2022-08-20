@@ -1,21 +1,11 @@
-﻿using Discord;
-using Discord.Commands;
-using System;
-using System.Collections.Generic;
-using System.Text;
+﻿using System.Linq;
 using System.Threading.Tasks;
-using static BasicBot.Services.MessageHandlerService;
-using System.Linq;
-using System.Xml;
-using Discord.WebSocket;
-using static BasicBot.Handler.User;
-using Discord.Interactions;
-using SummaryAttribute = Discord.Interactions.SummaryAttribute;
-using static BasicBot.Commands.ModalCommand;
-using BasicBot.Settings;
 using BasicBot.Handler;
-using static BasicBot.Handler.Multiversus;
+using BasicBot.Multiversus;
+using Discord.Interactions;
+using Discord.WebSocket;
 using static BasicBot.MonarkTypes.Message;
+using static BasicBot.Multiversus.Multiversus;
 
 namespace BasicBot.Commands
 {
@@ -25,11 +15,11 @@ namespace BasicBot.Commands
         public async Task RoleSelection(string id, string[] selected)
         {
             await DeferAsync(true);
-            if (GetThing(Context.Interaction.Message.Id) is gamething game)
+            if (GetGame(Context.Interaction.Message.Id) is Game game)
             {
                 MonarkMessage msg = "Bugged";
 
-                if (await game.AddMapBan(Context.User, selected.First()))
+                if (await game.SelectMap(Context.User, selected.First()))
                 {
                     //msg = "Added Ban";
                 }
@@ -38,33 +28,109 @@ namespace BasicBot.Commands
                     msg = "Its not your turn";
                     await msg.SendMessage(Context.Interaction);
                 }
-
-
             }
-
         }
 
         [ComponentInteraction("maps:*")]
         public async Task MapSelection(string id, string[] selected)
         {
-            var gld = Handler.Guild.GetDiscordOrMake(Context.Guild);
+            var gld = Guild.GetDiscordOrMake(Context.Guild);
             if (!gld.Maps.ContainsKey(selected.First()))
             {
-                await Context.Interaction.RespondAsync($"Failed to fine", ephemeral: true);
+                await Context.Interaction.RespondAsync("Failed to find", ephemeral: true);
                 return;
             }
 
             await DeferAsync(true);
 
-            if (GetThing(Context.Interaction.Message.Id) is gamething game)
+            if (GetGame(Context.Interaction.Message.Id) is Game game)
+                if (game.OnTeam(Context.User, game.Team1) || game.OnTeam(Context.User, game.Team2))
+                    await game.BuildBanPhase(gld.Maps[selected.First()]).UpdateMessage(game.Message);
+        }
+
+        [ComponentInteraction("wonlast*")]
+        public async Task WonLastButton()
+        {
+            var gld = Guild.GetDiscordOrMake(Context.Guild);
+
+            await DeferAsync(true);
+
+            if (GetGame(Context.Interaction.Message.Id) is Game game)
             {
-                if (game.User1.Id == Context.User.Id || game.User2.Id == Context.User.Id)
+                if (Context.Interaction.Data.CustomId == "wonlast2")
                 {
-                    await game.BuildBanPhase(gld.Maps[selected.First()]).UpdateMessage(game.Interaction);
+                    (game.Team1, game.Team2) = (game.Team2, game.Team1);
                 }
 
-            }
+                game.CoinflipWinner = null;
 
+                await game.BuildPoolPhase().UpdateMessage(game.Message);
+            }
+        }
+
+        [ComponentInteraction("coinflip")]
+        public async Task CoinflipButton()
+        {
+            var gld = Guild.GetDiscordOrMake(Context.Guild);
+
+            await DeferAsync(true);
+
+            if (GetGame(Context.Interaction.Message.Id) is Game game)
+            {
+                if (Random.RandomBool())
+                {
+                    (game.Team1, game.Team2) = (game.Team2, game.Team1);
+                }
+
+                game.CoinflipWinner = game.Team1;
+
+                var _msg = game.BuildPoolPhase();
+                await _msg.UpdateMessage(game.Message);
+            }
+        }
+
+        [ComponentInteraction("end")]
+        public async Task End()
+        {
+            await DeferAsync(true);
+
+            if (GetGame(Context.Interaction.Message.Id) is Game game)
+            {
+                Games.Remove(game.Message.Id);
+                foreach (var channel in Context.Guild.Channels)
+                {
+                    if (channel.Id == Context.Interaction.ChannelId)
+                    {
+                        await channel.DeleteAsync();
+                    }
+                }
+            }
+        }
+
+        [ComponentInteraction("next")]
+        public async Task Next()
+        {
+            await DeferAsync(true);
+
+            if (GetGame(Context.Interaction.Message.Id) is Game game)
+            {
+                game.Set.NextGame(0);
+            }
+        }
+
+        [ComponentInteraction("restart")]
+        public async Task Restart()
+        {
+            await DeferAsync(true);
+
+            if (GetGame(Context.Interaction.Message.Id) is Game game)
+            {
+                game.BlockedMap = "";
+                game.SelectedMap = "";
+                game.CoinflipWinner = null;
+
+                await game.BuildFirst().UpdateMessage(game.Message);
+            }
         }
     }
 }

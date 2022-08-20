@@ -1,16 +1,13 @@
-﻿using Discord;
-using Discord.Commands;
-using Discord.WebSocket;
-using System;
-using System.Reflection;
+﻿using System;
 using System.Collections.Generic;
-using System.Text;
+using System.Reflection;
 using System.Threading.Tasks;
-using System.Linq;
-using Discord.Interactions;
 using BasicBot.Commands;
+using Discord;
+using Discord.Commands;
+using Discord.Interactions;
+using Discord.WebSocket;
 using static BasicBot.Handler.Settings;
-using BasicBot.Handler;
 
 namespace BasicBot.Services
 {
@@ -41,9 +38,9 @@ namespace BasicBot.Services
             discord = _discord;
             commands = _commands;
             interactionService = new InteractionService(discord, new InteractionServiceConfig
-            {
-                ThrowOnError = true
-            }
+                {
+                    ThrowOnError = true
+                }
             );
 
             discord.MessageReceived += Discord_MessageReceived;
@@ -52,8 +49,8 @@ namespace BasicBot.Services
             discord.InteractionCreated += Client_InteractionCreated;
             discord.UserJoined += Discord_UserJoined;
             discord.GuildAvailable += Discord_GuildAvailable;
-            discord.ThreadCreated += Discord_ThreadCreated;
-            discord.ThreadUpdated += Discord_ThreadUpdated;
+            // discord.ThreadCreated += Discord_ThreadCreated;
+            // discord.ThreadUpdated += Discord_ThreadUpdated;
         }
 
         private Task Discord_ThreadUpdated(Cacheable<SocketThreadChannel, ulong> arg1, SocketThreadChannel arg2)
@@ -70,40 +67,40 @@ namespace BasicBot.Services
         {
             try
             {
-                await interactionService.RegisterCommandsToGuildAsync(arg.Id, true);
+                await interactionService.RegisterCommandsToGuildAsync(arg.Id, false);
             }
             catch (Exception ex)
-            { 
-
+            {
             }
         }
 
         private async Task Discord_UserJoined(SocketGuildUser user)
         {
-
         }
 
         private async Task Client_InteractionCreated(SocketInteraction arg)
         {
-
-
             switch (arg)
             {
                 case SocketSlashCommand:
-                    var SlashContext = new SocketInteractionContext<SocketSlashCommand>(discord, arg as SocketSlashCommand);
+                    var SlashContext =
+                        new SocketInteractionContext<SocketSlashCommand>(discord, arg as SocketSlashCommand);
                     await interactionService.ExecuteCommandAsync(SlashContext, provider);
                     break;
                 case SocketMessageCommand:
-                    var MessageContext = new SocketInteractionContext<SocketMessageCommand>(discord, arg as SocketMessageCommand);
+                    var MessageContext =
+                        new SocketInteractionContext<SocketMessageCommand>(discord, arg as SocketMessageCommand);
                     await interactionService.ExecuteCommandAsync(MessageContext, provider);
                     break;
                 case SocketMessageComponent:
-                    var _MessageContext = new SocketInteractionContext<SocketMessageComponent>(discord, arg as SocketMessageComponent);
+                    var _MessageContext =
+                        new SocketInteractionContext<SocketMessageComponent>(discord, arg as SocketMessageComponent);
                     await interactionService.ExecuteCommandAsync(_MessageContext, provider);
                     break;
 
                 case SocketUserCommand:
-                    var UserContext = new SocketInteractionContext<SocketUserCommand>(discord, arg as SocketUserCommand);
+                    var UserContext =
+                        new SocketInteractionContext<SocketUserCommand>(discord, arg as SocketUserCommand);
                     await interactionService.ExecuteCommandAsync(UserContext, provider);
                     break;
                 case SocketModal:
@@ -118,8 +115,6 @@ namespace BasicBot.Services
 
                     break;
             }
-
-
         }
 
         public async Task Client_Ready()
@@ -157,8 +152,6 @@ namespace BasicBot.Services
                 }
             }
 
-            
-
 
             if (socketMessage.Channel is IDMChannel chnl)
             {
@@ -167,8 +160,6 @@ namespace BasicBot.Services
 
             else if (socketMessage is IUserMessage message)
             {
-                
-
                 var context = new CommandContext(discord, message);
                 var botPrefx = GetSettings().BotPrefix;
                 var argPos = 0;

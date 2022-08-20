@@ -31,7 +31,7 @@ namespace BasicBot.Handler
             }
             else
             {
-                BotSettings = new Bot { BotToken = "Put discord bot token here", BotOwners = new List<ulong> { 0, 1 }, BotPrefix = "?"};
+                BotSettings = new Bot { BotToken = "Put discord bot token here", BotOwners = new List<ulong> { 0, 1 }, BotPrefix = "?", StartGGToken = "Put start.gg token here"};
                 SaveSettings();
             }
             return null;

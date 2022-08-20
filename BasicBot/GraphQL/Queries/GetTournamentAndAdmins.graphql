@@ -1,0 +1,8 @@
+query GetTournamentAndAdmins($tournamentSlug: String){
+    tournament(slug: $tournamentSlug){
+        id
+        admins{
+            id
+        }
+    }
+}

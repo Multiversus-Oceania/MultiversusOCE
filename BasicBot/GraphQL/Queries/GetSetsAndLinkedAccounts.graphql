@@ -1,0 +1,44 @@
+query GetSetsAndLinkedAccounts( $eventId: ID, $page: Int,$perPage: Int){
+    currentUser {
+        id
+    }
+    event(id: $eventId){
+        id
+        tournament {
+            admins
+            {
+                id
+            }
+        }
+        sets(page: $page, perPage: $perPage, filters: { showByes: false, hideEmpty: true, state: [1,2] }){
+            nodes {
+                id
+                totalGames
+                state
+                winnerId
+                games {
+                    winnerId
+                    orderNum
+                    stage {
+                        name
+                    }
+                }
+                slots{
+                    entrant {
+                        name
+                        participants {
+                            gamerTag
+                            requiredConnections {
+                                id
+                                externalId
+                                externalUsername
+                                type
+                                url
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

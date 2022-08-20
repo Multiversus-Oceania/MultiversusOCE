@@ -13,5 +13,7 @@ namespace BasicBot.Settings
         public string BotPrefix { get; internal set; }
         [JsonProperty]
         public List<ulong> BotOwners { get; internal set; }
+        [JsonProperty]
+        public string StartGGToken { get; internal set; }
     }
 }
