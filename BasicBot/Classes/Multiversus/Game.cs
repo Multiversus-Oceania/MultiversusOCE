@@ -187,10 +187,9 @@ public class Game
         }
         else
         {
-            components.WithButton("Undo Selection", "restart", ButtonStyle.Danger)
-                .WithButton(
-                    "Next Game (If not working after reporting scores)",
-                    "next", ButtonStyle.Danger);
+            components.WithButton("Undo Selection (Only for mistakes)", "restart", ButtonStyle.Danger);
+            msg.AddEmbed(new EmbedBuilder().WithTitle(
+                "To start the next game in the set, please update the score on the start.gg website."));
         }
 
         msg.Components = components.Build();
@@ -198,7 +197,7 @@ public class Game
         msg.AddEmbed(new EmbedBuilder().WithDescription("Done").AddField($"{Team1.Name}",
             $"Maps Banned:\n{BlockedMap}", true).AddField($"{Team2.Name}",
             $"Maps Selected:\n{SelectedMap}", true));
-        
+
         if (CoinflipWinner != null)
         {
             string coinflipText = Team1.Name + " won the coinflip.";
