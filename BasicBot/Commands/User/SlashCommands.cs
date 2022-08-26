@@ -11,6 +11,7 @@ using Discord.Interactions;
 using Discord.WebSocket;
 using static BasicBot.Multiversus.Multiversus;
 using Game = BasicBot.Multiversus.Game;
+using Guild = BasicBot.Settings.Guild;
 
 #endregion
 
@@ -22,56 +23,60 @@ public class SlashCommand : InteractionModuleBase<SocketInteractionContext<Socke
     [SlashCommand("add-map-pool", "Map pools to be added")]
     public async Task AddMapPool(string Name, List<string> Maps) //, )
     {
-        var gld = Guild.GetDiscordOrMake(Context.Guild);
+        await DeferAsync(true);
+        var gld = await Handler.Guild.GetDiscordOrMake(Context.Guild);
         gld.Maps[Name] = Maps;
 
-        await Context.Interaction.RespondAsync("Done", ephemeral: true);
-        Guild.SaveGuilds();
+        await Context.Interaction.FollowupAsync("Done", ephemeral: true);
+        Handler.Guild.SaveGuild(gld);
     }
 
     [SlashCommand("remove-map-pool", "Map pools to be removed")]
     public async Task RemoveMapPool(string Name) //, )
     {
-        var gld = Guild.GetDiscordOrMake(Context.Guild);
+        await DeferAsync(true);
+        var gld = await Handler.Guild.GetDiscordOrMake(Context.Guild);
         if (!gld.Maps.ContainsKey(Name))
         {
-            await Context.Interaction.RespondAsync($"Failed to fine {Name}", ephemeral: true);
+            await Context.Interaction.FollowupAsync($"Failed to fine {Name}", ephemeral: true);
             return;
         }
 
         gld.Maps.Remove(Name);
 
-        await Context.Interaction.RespondAsync("removed", ephemeral: true);
-        Guild.SaveGuilds();
+        await Context.Interaction.FollowupAsync("removed", ephemeral: true);
+        Handler.Guild.SaveGuild(gld);
     }
 
     [SlashCommand("set-tournament-category", "Set the category for auto created channels.")]
-    public async Task setCategory(ulong categoryId)
+    public async Task setCategory(SocketCategoryChannel category)
     {
-        var gld = Guild.GetDiscordOrMake(Context.Guild);
+        await DeferAsync(true);
+        var gld = await Handler.Guild.GetDiscordOrMake(Context.Guild);
 
-        if (Context.Guild.CategoryChannels.Where(c => c.Id == categoryId).ToArray().Count() == 1)
+        if (Context.Guild.CategoryChannels.Where(c => c.Id == category.Id).ToArray().Count() == 1)
         {
-            gld.TournamentCategory = categoryId;
-            Guild.SaveGuilds();
+            gld.TournamentCategory = category.Id;
+            Handler.Guild.SaveGuild(gld);
         }
         else
         {
-            await Context.Interaction.RespondAsync("Failed to set tournament category.", ephemeral: true);
+            await Context.Interaction.FollowupAsync("Failed to set tournament category.", ephemeral: true);
             return;
         }
 
 
-        await Context.Interaction.RespondAsync("Set tournament category.", ephemeral: true);
+        await Context.Interaction.FollowupAsync("Set tournament category.", ephemeral: true);
     }
 
     [SlashCommand("game", "Create a game with the new system.")]
-    public async Task game(SocketUser enemy1, SocketUser teammate = null, SocketUser enemy2 = null)
+    public async Task game(SocketGuildUser enemy1, SocketGuildUser teammate = null, SocketGuildUser enemy2 = null)
     {
-        var gld = Guild.GetDiscordOrMake(Context.Guild);
+        await DeferAsync(true);
+        var gld = await Handler.Guild.GetDiscordOrMake(Context.Guild);
 
-        var team1Users = new List<SocketUser>() { Context.User };
-        var team2Users = new List<SocketUser>() { enemy1 };
+        var team1Users = new List<SocketGuildUser>() { Context.User as SocketGuildUser };
+        var team2Users = new List<SocketGuildUser>() { enemy1 };
 
         if (teammate != null) team1Users.Add(teammate);
         if (enemy2 != null) team2Users.Add(enemy2);
@@ -81,20 +86,20 @@ public class SlashCommand : InteractionModuleBase<SocketInteractionContext<Socke
         {
             if (user.Id == Context.User.Id)
             {
-                // await Context.Interaction.RespondAsync("Cannot challenge yourself.", ephemeral: true);
+                // await Context.Interaction.FollowupAsync("Cannot challenge yourself.", ephemeral: true);
                 // return;
             }
 
             if (user.IsBot)
             {
-                await Context.Interaction.RespondAsync("Cannot challenge a bot.", ephemeral: true);
+                await Context.Interaction.FollowupAsync("Cannot challenge a bot.", ephemeral: true);
                 return;
             }
         }
 
         if (Context.Guild.CategoryChannels.Where(c => c.Id == gld.TournamentCategory).ToArray().Length != 1)
         {
-            await Context.Interaction.RespondAsync(
+            await Context.Interaction.FollowupAsync(
                 "The server administrator has set an invalid tournament category. Please contact an admin.",
                 ephemeral: true);
             return;
@@ -122,7 +127,7 @@ public class SlashCommand : InteractionModuleBase<SocketInteractionContext<Socke
                 x.PermissionOverwrites = overwrites.ToArray();
             });
 
-        await Context.Interaction.RespondAsync("Game channel created: " + channel.Mention, ephemeral: true);
+        await Context.Interaction.FollowupAsync("Game channel created: " + channel.Mention, ephemeral: true);
 
         var _msg = new Message.MonarkMessage();
         _msg.AddEmbed(new EmbedBuilder().WithTitle("Building..."));
@@ -136,15 +141,16 @@ public class SlashCommand : InteractionModuleBase<SocketInteractionContext<Socke
     [SlashCommand("remove-channels", "Create a game with the new system.")]
     public async Task removeChannels()
     {
+        await DeferAsync(true);
         Games.Clear();
 
-        var categoryId = Guild.GetDiscordOrMake(Context.Guild).TournamentCategory;
+        var categoryId = (await Handler.Guild.GetDiscordOrMake(Context.Guild)).TournamentCategory;
 
         foreach (var category in Context.Guild.CategoryChannels)
         {
             if (category.Id == categoryId)
             {
-                await Context.Interaction.RespondAsync("Deleting...", ephemeral: true);
+                await Context.Interaction.FollowupAsync("Deleting...", ephemeral: true);
                 foreach (var channel in category.Channels)
                 {
                     await channel.DeleteAsync();
@@ -155,15 +161,16 @@ public class SlashCommand : InteractionModuleBase<SocketInteractionContext<Socke
             }
         }
 
-        await Context.Interaction.RespondAsync("Category could not be found.", ephemeral: true);
+        await Context.Interaction.FollowupAsync("Category could not be found.", ephemeral: true);
     }
 
     [SlashCommand("start-event", "Start an event hosted on start.gg")]
     public async Task startEvent(string url)
     {
-        var gld = Guild.GetDiscordOrMake(Context.Guild);
+        await DeferAsync(true);
+        var gld = await Handler.Guild.GetDiscordOrMake(Context.Guild);
 
-        var categoryId = Guild.GetDiscordOrMake(Context.Guild).TournamentCategory;
+        var categoryId = gld.TournamentCategory;
 
         foreach (var category in Context.Guild.CategoryChannels)
         {
@@ -203,19 +210,20 @@ public class SlashCommand : InteractionModuleBase<SocketInteractionContext<Socke
                     }
                 }
 
-                await Context.Interaction.RespondAsync("Event not found.", ephemeral: true);
+                await Context.Interaction.FollowupAsync("Event not found.", ephemeral: true);
                 return;
             }
         }
 
-        await Context.Interaction.RespondAsync("Please set the category for channels to be created in.",
+        await Context.Interaction.FollowupAsync("Please set the category for channels to be created in.",
             ephemeral: true);
     }
 
     [SlashCommand("stop-event", "Stop a running event.")]
     public async Task stopEvent(string url)
     {
-        var gld = Guild.GetDiscordOrMake(Context.Guild);
+        await DeferAsync(true);
+        var gld = await Handler.Guild.GetDiscordOrMake(Context.Guild);
 
         var urlParts = url.Split("/");
 
@@ -248,6 +256,31 @@ public class SlashCommand : InteractionModuleBase<SocketInteractionContext<Socke
             }
         }
 
-        await Context.Interaction.RespondAsync("Event not found.", ephemeral: true);
+        await Context.Interaction.FollowupAsync("Event not found.", ephemeral: true);
+    }
+
+    [SlashCommand("set-channel", "Set a channel.")]
+    public async Task setChannel(Guild.ChannelType channelType, SocketTextChannel channel)
+    {
+        await DeferAsync(true);
+        var gld = await Handler.Guild.GetDiscordOrMake(Context.Guild);
+
+        if (Context.Guild.TextChannels.Where(c => c.Id == channel.Id).ToArray().Count() == 1)
+        {
+            if (gld.Channels.ContainsKey(channelType))
+                gld.Channels[channelType] = channel.Id;
+            else
+                gld.Channels.Add(channelType, channel.Id);
+
+            Handler.Guild.SaveGuild(gld);
+        }
+        else
+        {
+            await Context.Interaction.FollowupAsync($"Failed to set {channelType} channel.", ephemeral: true);
+            return;
+        }
+
+
+        await Context.Interaction.FollowupAsync($"Set {channelType} channel.", ephemeral: true);
     }
 }

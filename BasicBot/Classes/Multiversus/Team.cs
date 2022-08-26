@@ -8,10 +8,10 @@ namespace BasicBot.Multiversus;
 public class Team
 {
     public string Id;
-    public List<SocketUser> Users;
+    public List<SocketGuildUser> Users;
     public string Name;
 
-    private void Setup(List<SocketUser> socketUsers, string name = null, string id = "")
+    private void Setup(List<SocketGuildUser> socketUsers, string name = null, string id = "")
     {
         if (socketUsers == null)
         {
@@ -29,7 +29,7 @@ public class Team
             foreach (var user in socketUsers)
             {
                 if (name != "") name += "/";
-                name += user.Username;
+                name += user.DisplayName;
             }
         }
 
@@ -38,19 +38,19 @@ public class Team
         Id = id;
     }
 
-    public Team(List<SocketUser> socketUsers, string name = null)
+    public Team(List<SocketGuildUser> socketUsers, string name = null)
     {
         Setup(socketUsers, name);
     }
 
-    public Team(SocketUser user, string name = null)
+    public Team(SocketGuildUser user, string name = null)
     {
-        Setup(new List<SocketUser>() { user }, name);
+        Setup(new List<SocketGuildUser>() { user }, name);
     }
 
     public Team(Entrant entrant, SocketGuild guild)
     {
-        List<SocketUser> users = new List<SocketUser>();
+        List<SocketGuildUser> users = new List<SocketGuildUser>();
         // Get the discord users out of the set info.
         foreach (var participant in entrant.Participants)
         {
@@ -60,7 +60,7 @@ public class Team
 
                 if (ulong.TryParse(connection.ExternalId, out var id))
                 {
-                    SocketUser user = guild.GetUser(id);
+                    SocketGuildUser user = guild.GetUser(id);
                     users.Add(user);
                 }
             }

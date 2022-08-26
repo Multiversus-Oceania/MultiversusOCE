@@ -1,7 +1,5 @@
-﻿using Newtonsoft.Json;
-using System;
-using System.Collections.Generic;
-using System.Text;
+﻿using System.Collections.Generic;
+using Newtonsoft.Json;
 
 namespace BasicBot.Settings
 {
@@ -9,11 +7,20 @@ namespace BasicBot.Settings
     {
         [JsonProperty]
         public string BotToken { get; internal set; }
+
         [JsonProperty]
         public string BotPrefix { get; internal set; }
+
         [JsonProperty]
         public List<ulong> BotOwners { get; internal set; }
+
         [JsonProperty]
         public string StartGGToken { get; internal set; }
+
+        [JsonProperty]
+        public string MongoConnection { get; internal set; }
+
+        [JsonProperty]
+        public string MongoDatabase { get; internal set; }
     }
 }

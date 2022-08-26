@@ -1,13 +1,8 @@
-﻿using Discord.WebSocket;
-using Discord;
-using Newtonsoft.Json;
-using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using BasicBot.Settings;
+using Newtonsoft.Json;
 using static BasicBot.Handler.String;
 
 namespace BasicBot.Handler
@@ -19,6 +14,7 @@ namespace BasicBot.Handler
         private static readonly string SettingsFile = CombineCurrentDirectory("settings.json");
 
         #region bot settings
+
         private static Bot LoadSettings()
         {
             if (File.Exists(SettingsFile))
@@ -31,9 +27,15 @@ namespace BasicBot.Handler
             }
             else
             {
-                BotSettings = new Bot { BotToken = "Put discord bot token here", BotOwners = new List<ulong> { 0, 1 }, BotPrefix = "?", StartGGToken = "Put start.gg token here"};
+                BotSettings = new Bot
+                {
+                    BotToken = "Put discord bot token here", BotOwners = new List<ulong> { 0, 1 }, BotPrefix = "?",
+                    StartGGToken = "Put start.gg token here", MongoConnection = "Put mongo connection string here",
+                    MongoDatabase = "Put mongo database here"
+                };
                 SaveSettings();
             }
+
             return null;
         }
 
@@ -43,6 +45,7 @@ namespace BasicBot.Handler
             {
                 BotSettings = LoadSettings();
             }
+
             return BotSettings;
         }
 
@@ -57,17 +60,24 @@ namespace BasicBot.Handler
                     return true;
                 }
             }
+
             return false;
         }
 
-        public static string GetPrefix() =>
-            BotSettings.BotPrefix;
+        public static string GetPrefix()
+        {
+            return BotSettings.BotPrefix;
+        }
 
-        public static bool IsBotOwner(ulong id) =>
-            BotSettings.BotOwners.Any(x => x == id);
+        public static bool IsBotOwner(ulong id)
+        {
+            return BotSettings.BotOwners.Any(x => x == id);
+        }
 
-        public static List<ulong> GetBotOwners() =>
-            BotSettings.BotOwners;
+        public static List<ulong> GetBotOwners()
+        {
+            return BotSettings.BotOwners;
+        }
 
         #endregion bot settings
     }

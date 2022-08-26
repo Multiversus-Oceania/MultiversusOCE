@@ -1,15 +1,10 @@
-﻿using Discord.WebSocket;
-using Discord;
-using System;
-using Newtonsoft.Json;
+﻿using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
+using Discord;
+using Discord.WebSocket;
+using MongoDB.Driver;
 using static BasicBot.Handler.String;
-using static BasicBot.Services.MessageHandlerService;
-using BasicBot.Settings;
 
 namespace BasicBot.Handler
 {
@@ -19,117 +14,139 @@ namespace BasicBot.Handler
 
         private static readonly string GuildsFile = CombineCurrentDirectory("Guilds.json");
 
+        public static MongoClient Client = new(Settings.GetSettings().MongoConnection);
+        public static IMongoDatabase Database = Client.GetDatabase(Settings.GetSettings().MongoDatabase);
+
+        public static IMongoCollection<BasicBot.Settings.Guild> GuildCollection =
+            Database.GetCollection<BasicBot.Settings.Guild>("guilds");
+
         #region user settings
-        private static Dictionary<ulong, BasicBot.Settings.Guild> LoadGuilds()
+
+        private static void Setup()
         {
-            if (File.Exists(GuildsFile) && Guilds == null)
-            {
-                var jsonText = File.ReadAllText(GuildsFile);
-                if (!string.IsNullOrWhiteSpace(jsonText))
-                {
-                    try
-                    {
-                        Guilds = JsonConvert.DeserializeObject<Dictionary<ulong, BasicBot.Settings.Guild>>(jsonText);
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine(ex);
-                        return null;
-                    }
-                    SaveGuilds();
-                }
-            }
-            if (Guilds == null)//backup check if file is empty
-            {
-                Guilds = new Dictionary<ulong, BasicBot.Settings.Guild>();
-                SaveGuilds();
-            }
-            return Guilds;
+            Guilds = new Dictionary<ulong, BasicBot.Settings.Guild>();
+
+            Client = new MongoClient(Settings.GetSettings().MongoConnection);
+            Database = Client.GetDatabase(Settings.GetSettings().MongoDatabase);
+
+            // BsonClassMap.RegisterClassMap<BasicBot.Settings.Guild>();
+
+            GuildCollection = Database.GetCollection<BasicBot.Settings.Guild>("guilds");
         }
 
-        public static bool SaveGuilds()
+        public static async void SaveGuild(BasicBot.Settings.Guild guild)
+        {
+            Console.WriteLine(guild.guildId);
+            var filter = Builders<BasicBot.Settings.Guild>.Filter.Eq("guildId", guild.guildId);
+            await GuildCollection.ReplaceOneAsync(filter, guild, new ReplaceOptions()
+            {
+                IsUpsert = true
+            });
+        }
+
+        public static void SaveGuilds()
         {
             if (Guilds != null)
             {
-                var jsonText = JsonConvert.SerializeObject(Guilds, Formatting.Indented);
-                if (!string.IsNullOrWhiteSpace(jsonText))
+                List<Task> tasks = new List<Task>();
+                foreach (var guild in Guilds)
                 {
-                    File.WriteAllText(GuildsFile, jsonText);
-                    return true;
+                    var filter = Builders<BasicBot.Settings.Guild>.Filter.Eq("guildId", guild.Key);
+                    tasks.Add(GuildCollection.ReplaceOneAsync(filter, guild.Value, new ReplaceOptions()
+                    {
+                        IsUpsert = true
+                    }));
                 }
+
+                Task.WaitAll(tasks.ToArray());
             }
-            return false;
         }
 
-        public static BasicBot.Settings.Guild GetDiscordOrMake(SocketGuild gld) =>
-            GetDiscordOrMake(gld.Id);
-        public static BasicBot.Settings.Guild GetDiscordOrMake(IGuild gld) =>
-            GetDiscordOrMake(gld.Id);
-        public static BasicBot.Settings.Guild GetDiscordOrMake(ulong guildID)
+        public static async Task<BasicBot.Settings.Guild> GetDiscordOrMake(SocketGuild gld)
+        {
+            return await GetDiscordOrMake(gld.Id);
+        }
+
+        public static async Task<BasicBot.Settings.Guild> GetDiscordOrMake(IGuild gld)
+        {
+            return await GetDiscordOrMake(gld.Id);
+        }
+
+        public static async Task<BasicBot.Settings.Guild> GetDiscordOrMake(ulong guildID)
         {
             if (Guilds == null)
-                LoadGuilds();
-            if (!Guilds.ContainsKey(guildID))
+                Setup();
+
+            var guild = await GetDiscord(guildID);
+            if (guild == null)
             {
-                var disc = MakeDiscord(guildID);
-                disc.guildId = guildID;
-                return disc;
+                return await MakeDiscord(guildID);
             }
-            return Guilds[guildID];
+
+            return guild;
         }
 
-        public static BasicBot.Settings.Guild GetDiscord(SocketGuild gld) =>
-            GetDiscord(gld.Id);
-        public static BasicBot.Settings.Guild GetDiscord(IGuild gld) =>
-            GetDiscord(gld.Id);
-        public static BasicBot.Settings.Guild GetDiscord(ulong guildID)
+        public static async Task<BasicBot.Settings.Guild> GetDiscord(SocketGuild gld)
+        {
+            return await GetDiscord(gld.Id);
+        }
+
+        public static async Task<BasicBot.Settings.Guild> GetDiscord(IGuild gld)
+        {
+            return await GetDiscord(gld.Id);
+        }
+
+        public static async Task<BasicBot.Settings.Guild> GetDiscord(ulong guildID)
         {
             if (Guilds == null)
-                LoadGuilds();
-            if (!Guilds.ContainsKey(guildID))
+                Setup();
+            if (Guilds.ContainsKey(guildID))
             {
-                return null;
+                return Guilds[guildID];
             }
-            return Guilds[guildID];
+
+            var filter = Builders<BasicBot.Settings.Guild>.Filter.Eq("guildID", guildID);
+
+            var guild = (await GuildCollection.FindAsync(x => x.guildId == guildID)).FirstOrDefault();
+
+            if (guild != null)
+                Guilds.Add(guildID, guild);
+
+            return guild;
         }
 
-        public static BasicBot.Settings.Guild MakeDiscord(ulong guildId)
+        public static async Task<BasicBot.Settings.Guild> MakeDiscord(ulong guildId)
         {
             if (Guilds == null)
-                LoadGuilds();
+                Setup();
 
             if (!Guilds.ContainsKey(guildId))
             {
-                return Guilds[guildId] = new BasicBot.Settings.Guild();
+                var guild = new BasicBot.Settings.Guild()
+                {
+                    guildId = guildId
+                };
+
+                Guilds.Add(guildId, guild);
+
+                await GuildCollection.InsertOneAsync(guild);
             }
-            SaveGuilds();
 
             return Guilds[guildId];
         }
 
-
         #endregion user settings
-
-        public static IEnumerable<BasicBot.Settings.Guild> GetAllGuilds()
-        {
-            if (Guilds == null)
-            {
-                LoadGuilds();
-            }
-
-            return Guilds.Select(x => x.Value);
-        }      
 
         public static BasicBot.Settings.Guild.StaffRoles GetStaffRoles(ulong guildId)
         {
-            var discord = GetDiscord(guildId);
-
-            if (discord == null)
-            {
-                return new BasicBot.Settings.Guild.StaffRoles();
-            }
-
-            return discord.StaffRole;
+            return new BasicBot.Settings.Guild.StaffRoles();
+            // var discord = GetDiscordOrMake(guildId);
+            //
+            // if (discord == null)
+            // {
+            // }
+            //
+            // return discord.StaffRole;
         }
     }
 }

@@ -8,6 +8,7 @@ using Discord;
 using Discord.Rest;
 using Discord.WebSocket;
 using static BasicBot.MonarkTypes.Message;
+using Guild = BasicBot.Settings.Guild;
 
 namespace BasicBot.Multiversus
 {
@@ -25,6 +26,26 @@ namespace BasicBot.Multiversus
         public static Dictionary<string, Dictionary<string, Set>> Sets = new();
         public static Dictionary<string, SocketCategoryChannel> RunningEvents = new();
         public static List<(Set, DateTime)> ScheduledForDeletion = new();
+
+        public static async Task Log(SocketGuild guild, string title, string text,
+            Guild.ChannelType channel = Guild.ChannelType.Log)
+        {
+            var gld = await Handler.Guild.GetDiscord(guild.Id);
+            if (gld != null)
+            {
+                if (gld.Channels.ContainsKey(channel))
+                {
+                    var channelList =
+                        guild.TextChannels.Where(x => x.Id == gld.Channels[channel]);
+                    if (channelList.Count() == 1)
+                    {
+                        var msg = new MonarkMessage();
+                        msg.AddEmbed(new EmbedBuilder().WithTitle(title).WithDescription(text));
+                        await msg.SendMessage(channelList.First());
+                    }
+                }
+            }
+        }
 
         public static async void UpdateSets()
         {
@@ -160,7 +181,7 @@ namespace BasicBot.Multiversus
                                 if (set != null)
                                     newSets.Add(startSet.Id, set);
 
-                                set.Update(startSet);
+                                set.Update(category.Guild, startSet);
                             }
                             catch (Exception ex)
                             {
@@ -188,7 +209,7 @@ namespace BasicBot.Multiversus
                                     foundSets.Add(setId, set);
                                     existingSets.Remove(setId);
 
-                                    set.Update(startSet);
+                                    set.Update(category.Guild, startSet);
                                 }
                                 catch (Exception ex)
                                 {
@@ -265,6 +286,7 @@ namespace BasicBot.Multiversus
             public RestTextChannel Channel;
             public Team Team1;
             public Team Team2;
+            public DateTime LastEvent;
 
             public static bool IsInProgress(Node setInfo)
             {
@@ -290,6 +312,7 @@ namespace BasicBot.Multiversus
                 set.WonLast = 0;
                 set.Team1 = new Team(setInfo.Slots[0].Entrant, category.Guild);
                 set.Team2 = new Team(setInfo.Slots[1].Entrant, category.Guild);
+                set.LastEvent = DateTime.Now;
 
                 if (set.Team1.Id == "" || set.Team2.Id == "")
                 {
@@ -334,8 +357,13 @@ namespace BasicBot.Multiversus
                 return set;
             }
 
-            public async Task Update(Node startSet)
+            public async Task Update(SocketGuild guild, Node startSet)
             {
+                if (LastEvent + TimeSpan.FromMinutes(15) < DateTime.Now)
+                {
+                    Log(guild, Channel.Name, $"{Channel.Mention} has not been updated in 15 minutes.");
+                }
+
                 // Check if games have changed.
                 // If so, create new message.
                 // Before modifying old game, get the selected map and save it.
@@ -348,6 +376,7 @@ namespace BasicBot.Multiversus
                     {
                         var team1Wins = 0;
                         var team2Wins = 0;
+                        LastEvent = DateTime.Now;
                         for (var i = 0; i < startSet.Games.Count; i++)
                         {
                             if (startSet.Games[i] != null)
@@ -421,7 +450,7 @@ namespace BasicBot.Multiversus
 
                 // If the last game was manually set, choose who won last game.
                 if (WonLast != 0 || CurrentGame == 1)
-                    await Game.BuildPoolPhase().UpdateMessage(msg);
+                    await (await Game.BuildPoolPhase()).UpdateMessage(msg);
                 else
                     await Game.BuildFirst().UpdateMessage(msg);
             }

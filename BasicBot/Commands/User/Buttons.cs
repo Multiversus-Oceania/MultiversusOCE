@@ -34,7 +34,7 @@ namespace BasicBot.Commands
         [ComponentInteraction("maps:*")]
         public async Task MapSelection(string id, string[] selected)
         {
-            var gld = Guild.GetDiscordOrMake(Context.Guild);
+            var gld = await Guild.GetDiscordOrMake(Context.Guild);
             if (!gld.Maps.ContainsKey(selected.First()))
             {
                 await Context.Interaction.RespondAsync("Failed to find", ephemeral: true);
@@ -64,7 +64,7 @@ namespace BasicBot.Commands
 
                 game.CoinflipWinner = null;
 
-                await game.BuildPoolPhase().UpdateMessage(game.Message);
+                await (await game.BuildPoolPhase()).UpdateMessage(game.Message);
             }
         }
 
@@ -85,7 +85,7 @@ namespace BasicBot.Commands
                 game.CoinflipWinner = game.Team1;
 
                 var _msg = game.BuildPoolPhase();
-                await _msg.UpdateMessage(game.Message);
+                await (await _msg).UpdateMessage(game.Message);
             }
         }
 

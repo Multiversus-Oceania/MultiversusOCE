@@ -6,7 +6,6 @@ using BasicBot.Handler;
 using BasicBot.MonarkTypes;
 using Discord;
 using Discord.WebSocket;
-using Guild = BasicBot.Settings.Guild;
 using Random = BasicBot.Handler.Random;
 
 namespace BasicBot.Multiversus;
@@ -21,6 +20,7 @@ public class Game
     public Team Team2;
     public List<string> MapPool;
     public Multiversus.Set Set;
+    public IUserMessage Message { get; set; }
 
     public Game(Team team1, Team team2,
         IUserMessage message, ulong guild)
@@ -52,13 +52,6 @@ public class Game
         GuildId = set.Channel.GuildId;
         Set = set;
     }
-
-    public IUserMessage Message { get; set; }
-
-
-    public Guild gld => Handler.Guild.GetDiscordOrMake(GuildId);
-
-    public Dictionary<string, List<string>> Maps => gld.Maps;
 
     public bool OnTeam(SocketUser user, Team team)
     {
@@ -127,15 +120,17 @@ public class Game
         return msg;
     }
 
-    public Message.MonarkMessage BuildPoolPhase()
+    public async Task<Message.MonarkMessage> BuildPoolPhase()
     {
-        if (Maps.Count == 0) return "There are no map pools created";
+        var gld = await Guild.GetDiscordOrMake(GuildId);
 
-        if (Maps.Count == 1) return BuildBanPhase(Maps.First().Value);
+        if (gld.Maps.Count == 0) return new Message.MonarkMessage("There are no map pools created");
+
+        if (gld.Maps.Count == 1) return BuildBanPhase(gld.Maps.First().Value);
 
         var message = new Message.MonarkMessage();
         message.AddEmbed(new EmbedBuilder().WithTitle("Please select a map pool"));
-        message.Components = new ComponentBuilder().WithSelectMenus("maps", BuildSelectOptions())
+        message.Components = new ComponentBuilder().WithSelectMenus("maps", await BuildSelectOptions())
             .WithButton("Restart Map Selection", "restart", ButtonStyle.Danger).Build();
 
         if (CoinflipWinner != null)
@@ -237,11 +232,12 @@ public class Game
         }
     }
 
-    public List<SelectMenuOptionBuilder> BuildSelectOptions()
+    public async Task<List<SelectMenuOptionBuilder>> BuildSelectOptions()
     {
+        var gld = await Guild.GetDiscordOrMake(GuildId);
         var options = new List<SelectMenuOptionBuilder>();
 
-        foreach (var a in Maps.Keys) options.Add(new SelectMenuOptionBuilder(a, a));
+        foreach (var a in gld.Maps.Keys) options.Add(new SelectMenuOptionBuilder(a, a));
 
         return options;
     }
