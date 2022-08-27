@@ -172,13 +172,15 @@ namespace BasicBot.MonarkTypes
                 return null;
             }
 
-            public async Task<IUserMessage> SendMessage(IMessageChannel chnl)
+            public async Task<IUserMessage> SendMessage(IMessageChannel chnl,
+                AllowedMentionTypes allowedMentions = AllowedMentionTypes.None)
             {
                 if (await BuildAttachment() is IEnumerable<FileAttachment> Acc)
                 {
                     try
                     {
-                        return await chnl.SendFilesAsync(Acc, Content, false, null, null, AllowedMentions.None,
+                        return await chnl.SendFilesAsync(Acc, Content, false, null, null,
+                            new AllowedMentions(allowedMentions),
                             Reference, Components, null, MakeEmbeds());
                     }
                     catch
@@ -190,7 +192,8 @@ namespace BasicBot.MonarkTypes
 
                 try
                 {
-                    return await chnl.SendMessageAsync(Content, false, null, null, AllowedMentions.None, Reference,
+                    var mentions = new AllowedMentions(allowedMentions);
+                    return await chnl.SendMessageAsync(Content, false, null, null, mentions, Reference,
                         Components, null, MakeEmbeds());
                 }
                 catch (Exception exe)

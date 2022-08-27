@@ -124,13 +124,18 @@ public static class StartGGHandler
 
     public class GetEventId : IStartGGQuery
     {
-        private readonly string Slug;
+        //""slug"": ""{Slug}""
+        private string VariableText => "\"" + (IsId ? "id" : "slug") + "\": \"" + InputValue + "\"";
+        private readonly string InputValue;
+        private readonly bool IsId;
 
         public GraphQL.EventId.Data Data;
 
-        public GetEventId(string slug)
+        public GetEventId(string value, bool isId)
         {
-            Slug = slug;
+            InputValue = value;
+            IsId = isId;
+
             var a = this.Execute();
 
             if (a.IsSuccessful)
@@ -142,7 +147,7 @@ public static class StartGGHandler
         StartGGParameter IStartGGQuery.Variables()
         {
             return $@"{{
-                ""slug"": ""{Slug}""
+                {VariableText}
             }}";
         }
 
@@ -150,7 +155,16 @@ public static class StartGGHandler
         {
             #region Query
 
-            return @"
+            return IsId
+                ? @"
+            query GetEventId( $id: Id ){
+                event(id: $id){
+                    id
+                    name
+                }
+            }
+            "
+                : @"
             query GetEventId( $slug: String ){
                 event(slug: $slug){
                     id

@@ -10,7 +10,8 @@ namespace BasicBot.Settings
         public enum ChannelType
         {
             Log,
-            Ping
+            Ping,
+            TournamentBoard
         }
 
         [BsonId]
@@ -28,10 +29,12 @@ namespace BasicBot.Settings
         [JsonProperty]
         public ulong TournamentCategory;
 
-        public ulong TORole;
-
         [BsonRepresentation(BsonType.Array)]
         public Dictionary<ChannelType, ulong> Channels = new();
+
+        public List<ulong> ModPingRoles = new();
+
+        public List<ulong> GameRoomRoles = new();
 
         public class StaffRoles
         {

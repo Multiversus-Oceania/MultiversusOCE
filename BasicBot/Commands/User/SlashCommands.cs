@@ -69,10 +69,37 @@ public class SlashCommand : InteractionModuleBase<SocketInteractionContext<Socke
         await Context.Interaction.FollowupAsync("Set tournament category.", ephemeral: true);
     }
 
+    [SlashCommand("set-game-roles", "Set the roles that are allowed in all of the game rooms.")]
+    public async Task setGameRoles(List<string> roleIds)
+    {
+        await DeferAsync(true);
+        var gld = await Handler.Guild.GetDiscordOrMake(Context.Guild);
+
+        // Try to parse all the ids from strings and turn them into ulongs.
+        gld.GameRoomRoles = roleIds.Select(x => ulong.TryParse(x, out var id) ? id : 0).ToList();
+        Handler.Guild.SaveGuild(gld);
+
+        await Context.Interaction.FollowupAsync("Set roles.", ephemeral: true);
+    }
+
+    [SlashCommand("set-mod-ping-roles", "Set the roles that are allowed in all of the game rooms.")]
+    public async Task setModPingRoles(List<string> roleIds)
+    {
+        await DeferAsync(true);
+        var gld = await Handler.Guild.GetDiscordOrMake(Context.Guild);
+
+        // Try to parse all the ids from strings and turn them into ulongs. 
+        gld.ModPingRoles = roleIds.Select(x => ulong.TryParse(x, out var id) ? id : 0).ToList();
+        Handler.Guild.SaveGuild(gld);
+
+        await Context.Interaction.FollowupAsync("Set roles.", ephemeral: true);
+    }
+
     [SlashCommand("game", "Create a game with the new system.")]
     public async Task game(SocketGuildUser enemy1, SocketGuildUser teammate = null, SocketGuildUser enemy2 = null)
     {
         await DeferAsync(true);
+
         var gld = await Handler.Guild.GetDiscordOrMake(Context.Guild);
 
         var team1Users = new List<SocketGuildUser>() { Context.User as SocketGuildUser };
@@ -113,8 +140,18 @@ public class SlashCommand : InteractionModuleBase<SocketInteractionContext<Socke
         {
             new(Context.Guild.EveryoneRole.Id, PermissionTarget.Role, deniedPermissions)
         };
+
         foreach (var user in team1Users.Union(team2Users))
             overwrites.Add(new Overwrite(user.Id, PermissionTarget.User, allowedPermissions));
+
+        List<ulong> allRoles = Context.Guild.Roles.Select(x => x.Id).ToList();
+        foreach (var role in gld.GameRoomRoles)
+        {
+            if (allRoles.Contains(role))
+            {
+                overwrites.Add(new Overwrite(role, PermissionTarget.Role, allowedPermissions));
+            }
+        }
 
         var team1 = new Team(team1Users);
         var team2 = new Team(team2Users);
@@ -138,7 +175,7 @@ public class SlashCommand : InteractionModuleBase<SocketInteractionContext<Socke
         await gamething.BuildFirst().UpdateMessage(msg);
     }
 
-    [SlashCommand("remove-channels", "Create a game with the new system.")]
+    [SlashCommand("remove-channels", "Remove game channels from the tournament category.")]
     public async Task removeChannels()
     {
         await DeferAsync(true);
@@ -151,10 +188,14 @@ public class SlashCommand : InteractionModuleBase<SocketInteractionContext<Socke
             if (category.Id == categoryId)
             {
                 await Context.Interaction.FollowupAsync("Deleting...", ephemeral: true);
+                List<Task> removalTasks = new List<Task>();
                 foreach (var channel in category.Channels)
                 {
-                    await channel.DeleteAsync();
+                    if (channel.Name.Contains("-vs-"))
+                        removalTasks.Add(channel.DeleteAsync());
                 }
+
+                await Task.WhenAll(removalTasks);
 
                 await Context.Interaction.ModifyOriginalResponseAsync(x => { x.Content = "Deleted channels"; });
                 return;
@@ -184,11 +225,10 @@ public class SlashCommand : InteractionModuleBase<SocketInteractionContext<Socke
                     {
                         if (urlParts[i + 2] == "event")
                         {
-                            await DeferAsync(true);
                             var slug = urlParts[i] + "/" + urlParts[i + 1] + "/" + urlParts[i + 2] + "/" +
                                        urlParts[i + 3];
 
-                            var eventId = new StartGGHandler.GetEventId(slug);
+                            var eventId = new StartGGHandler.GetEventId(slug, false);
                             if (eventId.Data != null && eventId.Data.Event != null)
                             {
                                 if (RunningEvents.ContainsKey(eventId.Data.Event.Id))
@@ -233,11 +273,10 @@ public class SlashCommand : InteractionModuleBase<SocketInteractionContext<Socke
             {
                 if (urlParts[i + 2] == "event")
                 {
-                    await DeferAsync(true);
                     var slug = urlParts[i] + "/" + urlParts[i + 1] + "/" + urlParts[i + 2] + "/" +
                                urlParts[i + 3];
 
-                    var eventId = new StartGGHandler.GetEventId(slug);
+                    var eventId = new StartGGHandler.GetEventId(slug, false);
                     if (eventId.Data != null && eventId.Data.Event != null)
                     {
                         if (RunningEvents.ContainsKey(eventId.Data.Event.Id))

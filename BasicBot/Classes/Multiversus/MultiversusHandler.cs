@@ -7,6 +7,7 @@ using BasicBot.Handler;
 using Discord;
 using Discord.Rest;
 using Discord.WebSocket;
+using Newtonsoft.Json;
 using static BasicBot.MonarkTypes.Message;
 using Guild = BasicBot.Settings.Guild;
 
@@ -28,23 +29,38 @@ namespace BasicBot.Multiversus
         public static List<(Set, DateTime)> ScheduledForDeletion = new();
 
         public static async Task Log(SocketGuild guild, string title, string text,
-            Guild.ChannelType channel = Guild.ChannelType.Log)
+            Guild.ChannelType channel = Guild.ChannelType.Log, string plainText = "")
         {
-            var gld = await Handler.Guild.GetDiscord(guild.Id);
-            if (gld != null)
+            try
             {
-                if (gld.Channels.ContainsKey(channel))
+                var gld = await Handler.Guild.GetDiscord(guild.Id);
+                if (gld != null)
                 {
-                    var channelList =
-                        guild.TextChannels.Where(x => x.Id == gld.Channels[channel]);
-                    if (channelList.Count() == 1)
+                    if (gld.Channels.ContainsKey(channel))
                     {
-                        var msg = new MonarkMessage();
-                        msg.AddEmbed(new EmbedBuilder().WithTitle(title).WithDescription(text));
-                        await msg.SendMessage(channelList.First());
+                        var channelList =
+                            guild.TextChannels.Where(x => x.Id == gld.Channels[channel]);
+                        if (channelList.Count() == 1)
+                        {
+                            var msg = new MonarkMessage();
+                            msg.Content = plainText;
+                            msg.AddEmbed(new EmbedBuilder().WithTitle(title).WithDescription(text));
+                            await msg.SendMessage(channelList.First(), AllowedMentionTypes.Roles);
+                        }
                     }
                 }
             }
+            catch (Exception ex)
+            {
+                Console.WriteLine(JsonConvert.SerializeObject(ex, Formatting.Indented));
+            }
+        }
+
+        public static async Task LogException(SocketGuild guild, Exception ex)
+        {
+            await Log(guild, ex.Message,
+                "```json\n" + JsonConvert.SerializeObject(ex, Formatting.Indented) + "\n```");
+            Console.WriteLine(JsonConvert.SerializeObject(ex, Formatting.Indented));
         }
 
         public static async void UpdateSets()
@@ -52,88 +68,48 @@ namespace BasicBot.Multiversus
             var eventsToRemove = new List<string>();
             while (true)
             {
-                for (var i = 0; i < ScheduledForDeletion.Count; i++)
+                try
                 {
-                    if ((ScheduledForDeletion[i].Item2 - DateTime.Now).TotalMinutes < 0)
+                    for (var i = 0; i < ScheduledForDeletion.Count; i++)
+                    {
+                        if ((ScheduledForDeletion[i].Item2 - DateTime.Now).TotalMinutes < 0)
+                        {
+                            try
+                            {
+                                // Ready for deletion.
+                                var set = ScheduledForDeletion[i].Item1;
+                                Games.Remove(set.Game.Message.Id);
+                                await set.Channel.DeleteAsync();
+                            }
+                            catch (Exception e)
+                            {
+                                Console.WriteLine(e);
+                            }
+
+                            // Removes from this list and decreases i to compensate.
+                            ScheduledForDeletion.RemoveAt(0);
+                            i--;
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
+
+                    foreach (var e in RunningEvents)
                     {
                         try
                         {
-                            // Ready for deletion.
-                            var set = ScheduledForDeletion[i].Item1;
-                            Games.Remove(set.Game.Message.Id);
-                            await set.Channel.DeleteAsync();
-                        }
-                        catch (Exception e)
-                        {
-                            Console.WriteLine(e);
-                        }
+                            var eventId = e.Key;
+                            var category = e.Value;
 
-                        // Removes from this list and decreases i to compensate.
-                        ScheduledForDeletion.RemoveAt(0);
-                        i--;
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }
+                            var perPage = 20;
 
-                foreach (var e in RunningEvents)
-                {
-                    var eventId = e.Key;
-                    var category = e.Value;
-
-                    var perPage = 20;
-
-                    StartGGHandler.GetSetsAndLinkedAccounts req = null;
-
-                    try
-                    {
-                        req = new StartGGHandler.GetSetsAndLinkedAccounts(eventId, 1, perPage);
-                    }
-                    catch (Exception exception)
-                    {
-                        Console.WriteLine(exception);
-                        continue;
-                    }
-
-                    // Check still admin and category still exists.
-                    if (category == null || req.Data.Event.Tournament.Admins == null ||
-                        req.Data.Event.Tournament.Admins.Where(x => x.Id == req.Data.CurrentUser.Id)
-                            .Count() !=
-                        1)
-                    {
-                        Console.Error.WriteLine("Error occurred updating sets.");
-                        // Remove existing sets from memory.
-                        if (Sets.ContainsKey(eventId))
-                        {
-                            Sets[eventId].Clear();
-                        }
-
-                        break;
-                    }
-
-                    // Get Sets from the first request.
-                    List<Node> startSets = new();
-                    startSets.AddRange(req.Data.Event.Sets.Nodes);
-                    // Get all the sets.
-                    // Max 20 sets per request to be safe from overflowing the maximum objects per request.
-                    // Keep requesting until receive a page with less than the amount per page requested which
-                    // signifies the end of the sets.
-                    // Max out at 1000 requests to be safe from issues and not loop forever.
-                    if (startSets.Count == perPage)
-                    {
-                        // Start at 2 because the first request already contains the info for page 1.
-                        var i = 2;
-                        while (true)
-                        {
-                            // This should really be its own query that doesnt get the self, event and tournament info but oh well.
-
-                            StartGGHandler.GetSetsAndLinkedAccounts setsRequest = null;
+                            StartGGHandler.GetSetsAndLinkedAccounts req = null;
 
                             try
                             {
-                                setsRequest = new StartGGHandler.GetSetsAndLinkedAccounts(eventId, i, perPage);
+                                req = new StartGGHandler.GetSetsAndLinkedAccounts(eventId, 1, perPage);
                             }
                             catch (Exception exception)
                             {
@@ -141,126 +117,182 @@ namespace BasicBot.Multiversus
                                 continue;
                             }
 
-                            foreach (var startSet in setsRequest.Data.Event.Sets.Nodes)
+                            // Check still admin and category still exists.
+                            if (category == null || req.Data.Event.Tournament.Admins == null ||
+                                req.Data.Event.Tournament.Admins.Where(x => x.Id == req.Data.CurrentUser.Id)
+                                    .Count() !=
+                                1)
                             {
-                                // Ensure that there are 2 filled slots in the set.
-                                // Start will send sets that are "in progress" with one player in them.
-                                if (Set.IsInProgress(startSet))
+                                Console.Error.WriteLine("Error occurred updating sets.");
+                                // Remove existing sets from memory.
+                                if (Sets.ContainsKey(eventId))
                                 {
-                                    startSets.Add(startSet);
+                                    Sets[eventId].Clear();
                                 }
-                            }
 
-                            if (setsRequest.Data.Event.Sets.Nodes.Count != perPage ||
-                                i == (int)MathF.Ceiling(1000f / perPage))
                                 break;
-                            i++;
-                        }
-                    }
-
-                    // No sets means that the tournament is over.
-                    if (startSets.Count == 0)
-                    {
-                        eventsToRemove.Add(eventId);
-                        continue;
-                    }
-
-                    // Remove sets from the existing list if they aren't going still (Remove discord too)
-                    // Add new sets to the list (Start discord)
-                    // Check if games have changed on existing sets (New map selection in discord.)
-
-                    // If the dictionary does already have sets for this event, no point checking as all sets will be new.
-                    if (!Sets.ContainsKey(eventId))
-                    {
-                        var newSets = new Dictionary<string, Set>();
-                        foreach (var startSet in startSets)
-                        {
-                            try
-                            {
-                                var set = await Set.CreateSet(category, startSet);
-                                if (set != null)
-                                    newSets.Add(startSet.Id, set);
-
-                                set.Update(category.Guild, startSet);
                             }
-                            catch (Exception ex)
+
+                            // Get Sets from the first request.
+                            List<Node> startSets = new();
+                            startSets.AddRange(req.Data.Event.Sets.Nodes);
+                            // Get all the sets.
+                            // Max 20 sets per request to be safe from overflowing the maximum objects per request.
+                            // Keep requesting until receive a page with less than the amount per page requested which
+                            // signifies the end of the sets.
+                            // Max out at 1000 requests to be safe from issues and not loop forever.
+                            if (startSets.Count == perPage)
                             {
-                                Console.WriteLine(ex);
-                            }
-                        }
-
-                        Sets.Add(eventId, newSets);
-                    }
-                    else
-                    {
-                        var foundSets = new Dictionary<string, Set>();
-                        var existingSets = Sets[eventId];
-                        foreach (var startSet in startSets)
-                        {
-                            if (startSet.Id == null) continue;
-                            var setId = startSet.Id;
-
-                            // Existing game. Check for a change in games played.
-                            if (existingSets.ContainsKey(setId))
-                            {
-                                try
+                                // Start at 2 because the first request already contains the info for page 1.
+                                var i = 2;
+                                while (true)
                                 {
-                                    var set = existingSets[setId];
-                                    foundSets.Add(setId, set);
-                                    existingSets.Remove(setId);
+                                    // This should really be its own query that doesnt get the self, event and tournament info but oh well.
 
-                                    set.Update(category.Guild, startSet);
-                                }
-                                catch (Exception ex)
-                                {
-                                    Console.WriteLine(ex);
+                                    StartGGHandler.GetSetsAndLinkedAccounts setsRequest = null;
+
+                                    try
+                                    {
+                                        setsRequest = new StartGGHandler.GetSetsAndLinkedAccounts(eventId, i, perPage);
+                                    }
+                                    catch (Exception exception)
+                                    {
+                                        Console.WriteLine(exception);
+                                        continue;
+                                    }
+
+                                    foreach (var startSet in setsRequest.Data.Event.Sets.Nodes)
+                                    {
+                                        // Ensure that there are 2 filled slots in the set.
+                                        // Start will send sets that are "in progress" with one player in them.
+                                        if (Set.IsInProgress(startSet))
+                                        {
+                                            startSets.Add(startSet);
+                                        }
+                                    }
+
+                                    if (setsRequest.Data.Event.Sets.Nodes.Count != perPage ||
+                                        i == (int)MathF.Ceiling(1000f / perPage))
+                                        break;
+                                    i++;
                                 }
                             }
-                            // New set started. Create set object and add to dictionary.
+
+                            // No sets means that the tournament is over.
+                            if (startSets.Count == 0)
+                            {
+                                eventsToRemove.Add(eventId);
+                                continue;
+                            }
+
+                            // Remove sets from the existing list if they aren't going still (Remove discord too)
+                            // Add new sets to the list (Start discord)
+                            // Check if games have changed on existing sets (New map selection in discord.)
+
+                            // If the dictionary does already have sets for this event, no point checking as all sets will be new.
+                            if (!Sets.ContainsKey(eventId))
+                            {
+                                var newSets = new Dictionary<string, Set>();
+                                foreach (var startSet in startSets)
+                                {
+                                    try
+                                    {
+                                        var set = await Set.CreateSet(category, startSet);
+                                        if (set != null)
+                                            newSets.Add(startSet.Id, set);
+
+                                        set.Update(category.Guild, startSet);
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        Console.WriteLine(ex);
+                                    }
+                                }
+
+                                Sets.Add(eventId, newSets);
+                            }
                             else
                             {
-                                try
+                                var foundSets = new Dictionary<string, Set>();
+                                var existingSets = Sets[eventId];
+                                foreach (var startSet in startSets)
                                 {
-                                    var set = await Set.CreateSet(category, startSet);
-                                    if (set != null)
-                                        foundSets.Add(setId, set);
+                                    if (startSet.Id == null) continue;
+                                    var setId = startSet.Id;
+
+                                    // Existing game. Check for a change in games played.
+                                    if (existingSets.ContainsKey(setId))
+                                    {
+                                        try
+                                        {
+                                            var set = existingSets[setId];
+                                            foundSets.Add(setId, set);
+                                            existingSets.Remove(setId);
+
+                                            set.Update(category.Guild, startSet);
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            Console.WriteLine(ex);
+                                        }
+                                    }
+                                    // New set started. Create set object and add to dictionary.
+                                    else
+                                    {
+                                        try
+                                        {
+                                            var set = await Set.CreateSet(category, startSet);
+                                            if (set != null)
+                                                foundSets.Add(setId, set);
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            Console.WriteLine(ex);
+                                        }
+                                    }
                                 }
-                                catch (Exception ex)
+
+                                // Each set left in existing sets has ended.
+                                foreach (var set in existingSets)
                                 {
-                                    Console.WriteLine(ex);
+                                    // Handle set end.
+                                    // Delay for ggs (5 mins).
+                                    // Delete discord channel.
+                                    ScheduledForDeletion.Add((set.Value, DateTime.Now.AddMinutes(5)));
+
+                                    var _msg = new MonarkMessage();
+                                    _msg.AddEmbed(new EmbedBuilder().WithTitle("Thank you for playing.")
+                                        .WithFooter("This channel will be automatically deleted in 5 minutes."));
+
+                                    _msg.SendMessage(set.Value.Channel);
                                 }
+
+                                // Assign new list of sets to the sets dict.
+                                Sets[eventId] = foundSets;
                             }
                         }
-
-                        // Each set left in existing sets has ended.
-                        foreach (var set in existingSets)
+                        catch (Exception ex)
                         {
-                            // Handle set end.
-                            // Delay for ggs (5 mins).
-                            // Delete discord channel.
-                            ScheduledForDeletion.Add((set.Value, DateTime.Now.AddMinutes(5)));
-
-                            var _msg = new MonarkMessage();
-                            _msg.AddEmbed(new EmbedBuilder().WithTitle("Thank you for playing.")
-                                .WithFooter("This channel will be automatically deleted in 5 minutes."));
-
-                            _msg.SendMessage(set.Value.Channel);
+                            await LogException(e.Value.Guild, ex);
                         }
-
-                        // Assign new list of sets to the sets dict.
-                        Sets[eventId] = foundSets;
                     }
-                }
 
-                for (var i = 0; i < eventsToRemove.Count; i++)
+                    for (var i = 0; i < eventsToRemove.Count; i++)
+                    {
+                        RunningEvents.Remove(eventsToRemove[i]);
+                    }
+
+                    eventsToRemove.Clear();
+
+                    await InProgressBoard.UpdateBoards();
+
+                    await Task.Delay(10000);
+                    Console.WriteLine("Delay done.");
+                }
+                catch (Exception ex)
                 {
-                    RunningEvents.Remove(eventsToRemove[i]);
+                    Console.WriteLine(JsonConvert.SerializeObject(ex, Formatting.Indented));
                 }
-
-                eventsToRemove.Clear();
-
-                await Task.Delay(10000);
-                Console.WriteLine("Delay done.");
             }
         }
 
@@ -286,7 +318,9 @@ namespace BasicBot.Multiversus
             public RestTextChannel Channel;
             public Team Team1;
             public Team Team2;
+            public int[] Wins = new int[2];
             public DateTime LastEvent;
+            public bool CheckedIn;
 
             public static bool IsInProgress(Node setInfo)
             {
@@ -313,11 +347,14 @@ namespace BasicBot.Multiversus
                 set.Team1 = new Team(setInfo.Slots[0].Entrant, category.Guild);
                 set.Team2 = new Team(setInfo.Slots[1].Entrant, category.Guild);
                 set.LastEvent = DateTime.Now;
+                set.CheckedIn = false;
 
                 if (set.Team1.Id == "" || set.Team2.Id == "")
                 {
                     return null;
                 }
+
+                var gld = await Handler.Guild.GetDiscordOrMake(category.Guild);
 
                 var channel = await category.Guild.CreateTextChannelAsync(
                     $"{setInfo.Slots[0].Entrant.Name} vs {setInfo.Slots[1].Entrant.Name}",
@@ -347,6 +384,11 @@ namespace BasicBot.Multiversus
                             overrides.Add(new Overwrite(user.Id, PermissionTarget.User, allowedPermissions));
                         }
 
+                        foreach (var role in gld.GameRoomRoles)
+                        {
+                            overrides.Add(new Overwrite(role, PermissionTarget.Role, allowedPermissions));
+                        }
+
                         x.PermissionOverwrites = overrides;
                     });
 
@@ -359,9 +401,29 @@ namespace BasicBot.Multiversus
 
             public async Task Update(SocketGuild guild, Node startSet)
             {
-                if (LastEvent + TimeSpan.FromMinutes(15) < DateTime.Now)
+                if (LastEvent + TimeSpan.FromMinutes(8) < DateTime.Now)
                 {
-                    Log(guild, Channel.Name, $"{Channel.Mention} has not been updated in 15 minutes.");
+                    var ping = "";
+                    var gld = await Handler.Guild.GetDiscordOrMake(guild);
+
+                    foreach (var role in gld.ModPingRoles)
+                    {
+                        ping = MentionUtils.MentionRole(role) + " " + ping;
+                    }
+
+                    await Log(guild, Channel.Name, $"<#{Channel.Id}> has not been updated in 15 minutes.",
+                        Guild.ChannelType.Ping, ping);
+
+                    LastEvent = DateTime.Now;
+                }
+
+                if (!CheckedIn)
+                {
+                    if (startSet.State != 1)
+                    {
+                        CheckedIn = true;
+                        await UpdateMessage(Game.Message);
+                    }
                 }
 
                 // Check if games have changed.
@@ -403,6 +465,8 @@ namespace BasicBot.Multiversus
                                 }
                             }
                         }
+
+                        Wins = new[] { team1Wins, team2Wins };
                     }
                 }
             }
@@ -441,13 +505,23 @@ namespace BasicBot.Multiversus
                 }
 
                 var _msg = new MonarkMessage();
-                _msg.AddEmbed(new EmbedBuilder().WithTitle("Building..."));
+                _msg.AddEmbed(new EmbedBuilder().WithTitle(CheckedIn
+                    ? "Building..."
+                    : "Please Check In on start.gg and return here."));
                 var msg = await _msg.SendMessage(Channel);
 
                 Game = new Game(this, msg);
 
                 Games[msg.Id] = Game;
 
+                if (CheckedIn)
+                {
+                    await UpdateMessage(msg);
+                }
+            }
+
+            private async Task UpdateMessage(IUserMessage msg)
+            {
                 // If the last game was manually set, choose who won last game.
                 if (WonLast != 0 || CurrentGame == 1)
                     await (await Game.BuildPoolPhase()).UpdateMessage(msg);
