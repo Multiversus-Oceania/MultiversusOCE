@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using BasicBot.GraphQL.SetsAndLinkedAccounts;
 using Discord.WebSocket;
+using Newtonsoft.Json;
 
 namespace BasicBot.Multiversus;
 
@@ -54,18 +55,32 @@ public class Team
         // Get the discord users out of the set info.
         foreach (var participant in entrant.Participants)
         {
-            foreach (var connection in participant.RequiredConnections)
+            try
             {
-                if (connection.Type != TypeEnum.Discord) continue;
-
-                if (ulong.TryParse(connection.ExternalId, out var id))
+                if (participant == null) continue;
+                
+                foreach (var connection in participant.RequiredConnections)
                 {
-                    SocketGuildUser user = guild.GetUser(id);
-                    users.Add(user);
+                    if (connection == null) continue;
+                    if (connection.Type != TypeEnum.Discord) continue;
+
+                    if (ulong.TryParse(connection.ExternalId, out var id))
+                    {
+                        SocketGuildUser user = guild.GetUser(id);
+
+                        if (user == null) continue;
+
+                        users.Add(user);
+                        break;
+                    }
                 }
             }
+            catch (Exception e)
+            {
+                Console.WriteLine(JsonConvert.SerializeObject(participant, Formatting.Indented));
+            }
         }
-
+        
         Setup(users, entrant.Name, entrant.Id);
     }
 }

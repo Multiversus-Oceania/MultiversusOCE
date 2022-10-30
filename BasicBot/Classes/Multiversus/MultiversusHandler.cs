@@ -199,9 +199,10 @@ namespace BasicBot.Multiversus
                                     {
                                         var set = await Set.CreateSet(category, startSet);
                                         if (set != null)
+                                        {
                                             newSets.Add(startSet.Id, set);
-
-                                        set.Update(category.Guild, startSet);
+                                            set.Update(category.Guild, startSet);
+                                        }
                                     }
                                     catch (Exception ex)
                                     {
@@ -286,7 +287,7 @@ namespace BasicBot.Multiversus
 
                     await InProgressBoard.UpdateBoards();
 
-                    await Task.Delay(10000);
+                    await Task.Delay(5 * 1000);
                     Console.WriteLine("Delay done.");
                 }
                 catch (Exception ex)
@@ -341,133 +342,154 @@ namespace BasicBot.Multiversus
             public static async Task<Set> CreateSet(SocketCategoryChannel category,
                 Node setInfo)
             {
-                var set = new Set();
-                set.CurrentGame = 1;
-                set.WonLast = 0;
-                set.Team1 = new Team(setInfo.Slots[0].Entrant, category.Guild);
-                set.Team2 = new Team(setInfo.Slots[1].Entrant, category.Guild);
-                set.LastEvent = DateTime.Now;
-                set.CheckedIn = false;
-
-                if (set.Team1.Id == "" || set.Team2.Id == "")
+                try
                 {
-                    return null;
+                    if (setInfo.Slots[0].Entrant == null || setInfo.Slots[1].Entrant == null) return null;
+                    
+                    var set = new Set();
+                    set.CurrentGame = 1;
+                    set.WonLast = 0;
+                    set.Team1 = new Team(setInfo.Slots[0].Entrant, category.Guild);
+                    set.Team2 = new Team(setInfo.Slots[1].Entrant, category.Guild);
+                    set.LastEvent = DateTime.Now;
+                    set.CheckedIn = false;
+
+                    if (set.Team1.Id == "" || set.Team2.Id == "")
+                    {
+                        return null;
+                    }
+
+                    var gld = await Handler.Guild.GetDiscordOrMake(category.Guild);
+
+                    var channel = await category.Guild.CreateTextChannelAsync(
+                        $"{setInfo.Slots[0].Entrant.Name} vs {setInfo.Slots[1].Entrant.Name}",
+                        x =>
+                        {
+                            x.CategoryId = category.Id;
+
+                            // Set permission overrides.
+                            var allowedPermissions =
+                                new OverwritePermissions(viewChannel: PermValue.Allow, sendMessages: PermValue.Allow);
+                            var deniedPermissions =
+                                new OverwritePermissions(viewChannel: PermValue.Deny, sendMessages: PermValue.Deny);
+
+                            var overrides = new List<Overwrite>
+                            {
+                                new(category.Guild.EveryoneRole.Id, PermissionTarget.Role,
+                                    deniedPermissions)
+                            };
+
+                            foreach (var user in set.Team1.Users)
+                            {
+                                if (user != null)
+                                    overrides.Add(new Overwrite(user.Id, PermissionTarget.User, allowedPermissions));
+                            }
+
+                            foreach (var user in set.Team2.Users)
+                            {
+                                if (user != null)
+                                    overrides.Add(new Overwrite(user.Id, PermissionTarget.User, allowedPermissions));
+                            }
+
+                            foreach (var role in gld.GameRoomRoles)
+                            {
+                                overrides.Add(new Overwrite(role, PermissionTarget.Role, allowedPermissions));
+                            }
+
+                            x.PermissionOverwrites = overrides;
+                        });
+
+                    set.Channel = channel;
+
+                    set.SendGameMessage(true);
+
+                    return set;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(JsonConvert.SerializeObject(ex, Formatting.Indented));
                 }
 
-                var gld = await Handler.Guild.GetDiscordOrMake(category.Guild);
-
-                var channel = await category.Guild.CreateTextChannelAsync(
-                    $"{setInfo.Slots[0].Entrant.Name} vs {setInfo.Slots[1].Entrant.Name}",
-                    x =>
-                    {
-                        x.CategoryId = category.Id;
-
-                        // Set permission overrides.
-                        var allowedPermissions =
-                            new OverwritePermissions(viewChannel: PermValue.Allow, sendMessages: PermValue.Allow);
-                        var deniedPermissions =
-                            new OverwritePermissions(viewChannel: PermValue.Deny, sendMessages: PermValue.Deny);
-
-                        var overrides = new List<Overwrite>
-                        {
-                            new(category.Guild.EveryoneRole.Id, PermissionTarget.Role,
-                                deniedPermissions)
-                        };
-
-                        foreach (var user in set.Team1.Users)
-                        {
-                            overrides.Add(new Overwrite(user.Id, PermissionTarget.User, allowedPermissions));
-                        }
-
-                        foreach (var user in set.Team2.Users)
-                        {
-                            overrides.Add(new Overwrite(user.Id, PermissionTarget.User, allowedPermissions));
-                        }
-
-                        foreach (var role in gld.GameRoomRoles)
-                        {
-                            overrides.Add(new Overwrite(role, PermissionTarget.Role, allowedPermissions));
-                        }
-
-                        x.PermissionOverwrites = overrides;
-                    });
-
-                set.Channel = channel;
-
-                set.SendGameMessage(true);
-
-                return set;
+                return null;
             }
 
             public async Task Update(SocketGuild guild, Node startSet)
             {
-                if (LastEvent + TimeSpan.FromMinutes(8) < DateTime.Now)
+                try
                 {
-                    var ping = "";
-                    var gld = await Handler.Guild.GetDiscordOrMake(guild);
-
-                    foreach (var role in gld.ModPingRoles)
+                    if (LastEvent + TimeSpan.FromMinutes(15) < DateTime.Now)
                     {
-                        ping = MentionUtils.MentionRole(role) + " " + ping;
-                    }
+                        var ping = "";
+                        var gld = await Handler.Guild.GetDiscordOrMake(guild);
 
-                    await Log(guild, Channel.Name, $"<#{Channel.Id}> has not been updated in 15 minutes.",
-                        Guild.ChannelType.Ping, ping);
-
-                    LastEvent = DateTime.Now;
-                }
-
-                if (!CheckedIn)
-                {
-                    if (startSet.State != 1)
-                    {
-                        CheckedIn = true;
-                        await UpdateMessage(Game.Message);
-                    }
-                }
-
-                // Check if games have changed.
-                // If so, create new message.
-                // Before modifying old game, get the selected map and save it.
-
-                if (startSet.Games != null)
-                {
-                    // Handle both potential behaviors of either adding to array after each game or by having
-                    // the array always be filled with null games and setting them after games are played.
-                    if (startSet.Games.Count >= CurrentGame && startSet.Games.Count < startSet.TotalGames)
-                    {
-                        var team1Wins = 0;
-                        var team2Wins = 0;
-                        LastEvent = DateTime.Now;
-                        for (var i = 0; i < startSet.Games.Count; i++)
+                        foreach (var role in gld.ModPingRoles)
                         {
-                            if (startSet.Games[i] != null)
-                            {
-                                // Convenient to also set wonLast here too even though it will be overridden by the next
-                                // loop.
-                                var wonLast = 0;
-                                if (startSet.Games[i].WinnerId == Team1.Id)
-                                {
-                                    wonLast = 1;
-                                    team1Wins++;
-                                }
-                                else if (startSet.Games[i].WinnerId == Team2.Id)
-                                {
-                                    wonLast = 2;
-                                    team2Wins++;
-                                }
-
-                                // i is the number of games played - 1.
-                                if (i + 1 >= CurrentGame && i + 1 < startSet.TotalGames)
-                                {
-                                    if (team1Wins < startSet.TotalGames / 2f && team2Wins < startSet.TotalGames / 2f)
-                                        await NextGame(wonLast);
-                                }
-                            }
+                            ping = MentionUtils.MentionRole(role) + " " + ping;
                         }
 
-                        Wins = new[] { team1Wins, team2Wins };
+                        await Log(guild, Channel.Name, $"<#{Channel.Id}> has not been updated in 15 minutes.",
+                            Guild.ChannelType.Ping, ping);
+
+                        LastEvent = DateTime.Now;
                     }
+
+                    if (!CheckedIn)
+                    {
+                        if (startSet.State == 2)
+                        {
+                            CheckedIn = true;
+                            await UpdateMessage(Game.Message);
+                        }
+                    }
+
+                    // Check if games have changed.
+                    // If so, create new message.
+                    // Before modifying old game, get the selected map and save it.
+
+                    if (startSet.Games != null)
+                    {
+                        // Handle both potential behaviors of either adding to array after each game or by having
+                        // the array always be filled with null games and setting them after games are played.
+                        if (startSet.Games.Count >= CurrentGame && startSet.Games.Count < startSet.TotalGames)
+                        {
+                            var team1Wins = 0;
+                            var team2Wins = 0;
+                            LastEvent = DateTime.Now;
+                            for (var i = 0; i < startSet.Games.Count; i++)
+                            {
+                                if (startSet.Games[i] != null)
+                                {
+                                    // Convenient to also set wonLast here too even though it will be overridden by the next
+                                    // loop.
+                                    var wonLast = 0;
+                                    if (startSet.Games[i].WinnerId == Team1.Id)
+                                    {
+                                        wonLast = 1;
+                                        team1Wins++;
+                                    }
+                                    else if (startSet.Games[i].WinnerId == Team2.Id)
+                                    {
+                                        wonLast = 2;
+                                        team2Wins++;
+                                    }
+
+                                    // i is the number of games played - 1.
+                                    if (i + 1 >= CurrentGame && i + 1 < startSet.TotalGames)
+                                    {
+                                        if (team1Wins < startSet.TotalGames / 2f &&
+                                            team2Wins < startSet.TotalGames / 2f)
+                                            await NextGame(wonLast);
+                                    }
+                                }
+                            }
+
+                            Wins = new[] { team1Wins, team2Wins };
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(JsonConvert.SerializeObject(ex, Formatting.Indented));
                 }
             }
 
